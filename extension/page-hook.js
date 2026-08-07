@@ -47,6 +47,8 @@
     lastDomDetail: null,
     menuOpenCount: 0,
     toggleClickCount: 0,
+    /** True only when THIS extension opened the model menu (not the user). */
+    menuOpenedByUs: false,
     bootAt: Date.now(),
   };
 
@@ -515,6 +517,10 @@
     return null;
   }
 
+  /**
+   * Click without focusing (focus causes CDK keyboard ring / "Tab-selected" look).
+   * Do NOT send Tab / Enter / Escape — those steal focus and close unrelated modals.
+   */
   function nativeClick(el) {
     if (!el) return;
     try {
@@ -522,17 +528,7 @@
     } catch (_) {
       /* ignore */
     }
-    try {
-      el.focus({ preventScroll: true });
-    } catch (_) {
-      try {
-        el.focus();
-      } catch (__) {
-        /* ignore */
-      }
-    }
 
-    // Prefer a single native click() — creates a trusted-ish activation path.
     try {
       if (typeof el.click === "function") {
         el.click();
@@ -551,10 +547,35 @@
       clientY: rect.top + rect.height / 2,
       button: 0,
       buttons: 1,
+      detail: 1,
     };
     el.dispatchEvent(new MouseEvent("mousedown", opts));
     el.dispatchEvent(new MouseEvent("mouseup", opts));
     el.dispatchEvent(new MouseEvent("click", opts));
+  }
+
+  /** Drop programmatic focus ring on mode/menu controls after our work. */
+  function clearSpuriousFocus() {
+    try {
+      const ae = document.activeElement;
+      if (!(ae instanceof HTMLElement) || ae === document.body) return;
+      const isOurs =
+        ae.matches?.(
+          '[data-test-id="bard-mode-menu-button"], [data-test-id*="thinking"], [data-test-id*="bard-mode"], button.input-area-switch'
+        ) ||
+        ae.closest?.(
+          '.cdk-overlay-pane, [data-test-id*="thinking"], [data-test-id*="bard-mode"], mat-menu'
+        );
+      if (isOurs) ae.blur();
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function markSuccess(detail) {
+    state.domEnableSucceeded = true;
+    state.lastDomDetail = detail;
+    clearSpuriousFocus();
   }
 
   // ---------------------------------------------------------------------------
@@ -754,24 +775,44 @@
   // Menu open / enable flow
   // ---------------------------------------------------------------------------
 
-  async function ensureMenuOpen() {
-    if (isExtendedActiveInUi()) {
-      logInfo("UI already shows extended on model chip");
-      return true;
+  /**
+   * Close the model menu ONLY if we opened it.
+   * Never send Escape (closes unrelated dialogs). Never leave focus rings.
+   */
+  function closeMenuIfWeOpened() {
+    if (!state.menuOpenedByUs) {
+      clearSpuriousFocus();
+      return;
     }
+    if (!isModelMenuOpen()) {
+      state.menuOpenedByUs = false;
+      clearSpuriousFocus();
+      return;
+    }
+    const btn = findMenuButton();
+    if (btn && isVisible(btn)) {
+      logInfo("closing menu we opened (re-click chip, no Escape)");
+      nativeClick(btn);
+    }
+    state.menuOpenedByUs = false;
+    // Let Angular settle then drop focus
+    setTimeout(clearSpuriousFocus, 50);
+    setTimeout(clearSpuriousFocus, 200);
+  }
 
+  async function ensureMenuOpen() {
+    // Caller must only use this when chip is NOT already extended.
     if (hasThinkingUi()) {
-      logInfo("thinking UI already visible");
+      logInfo("thinking UI already visible (user or prior open)");
       return true;
     }
 
     if (isModelMenuOpen()) {
-      logInfo("model menu open; waiting for thinking UI");
+      logInfo("model menu already open; waiting for thinking UI (no re-click)");
       for (let i = 0; i < 25; i++) {
         await sleep(100);
         if (hasThinkingUi()) return true;
         if (isExtendedActiveInUi()) return true;
-        // Nested thinking nav
         if (i === 8) {
           const nav = queryDeep('[data-test-id="thinking-level-nav-button"]');
           if (nav && isVisible(nav)) {
@@ -780,7 +821,6 @@
           }
         }
       }
-      // Do NOT re-click menu button while open
       logWarn("menu open but thinking UI still missing");
       return hasThinkingUi();
     }
@@ -797,6 +837,7 @@
       text: textOf(btn),
     });
     state.menuOpenCount += 1;
+    state.menuOpenedByUs = true;
     nativeClick(btn);
 
     for (let i = 0; i < 40; i++) {
@@ -813,8 +854,8 @@
           nativeClick(nav);
         }
       }
-      // If menu closed unexpectedly, reopen once
-      if (i === 20 && !isModelMenuOpen()) {
+      // Reopen once only if the menu we opened vanished
+      if (i === 20 && !isModelMenuOpen() && state.menuOpenedByUs) {
         logInfo("menu closed unexpectedly; reopening once");
         state.menuOpenCount += 1;
         nativeClick(btn);
@@ -827,18 +868,6 @@
     });
     state.lastDomDetail = "thinking-ui-missing-after-open";
     return false;
-  }
-
-  function closeMenuSoft() {
-    // Only Escape — do not click the model chip (that toggles)
-    document.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        key: "Escape",
-        code: "Escape",
-        keyCode: 27,
-        bubbles: true,
-      })
-    );
   }
 
   async function waitForExtended(msTotal) {
@@ -858,44 +887,56 @@
 
     state.domEnableAttempted = true;
 
+    // ---- Fast path: already on → zero UI interaction ----
     if (isExtendedActiveInUi()) {
-      logInfo("already extended (chip text)");
-      state.domEnableSucceeded = true;
-      state.lastDomDetail = "chip-already-extended";
+      logInfo("already extended (chip text) — skip menu/focus", {
+        chip: textOf(findMenuButton()),
+      });
+      markSuccess("chip-already-extended");
       return true;
     }
 
-    // Strategy 0: Angular invoke WITHOUT opening menu (state may already be ready)
+    // Strategy 0: Angular invoke WITHOUT opening menu
     if (!state.ngInvokeSucceeded) {
       const ngOk = tryInvokeAngularThinkingExtended();
       if (ngOk && (await waitForExtended(800))) {
-        state.domEnableSucceeded = true;
-        state.lastDomDetail = "ng-invoke-before-menu";
+        markSuccess("ng-invoke-before-menu");
         logInfo("extended via Angular before menu");
+        clearSpuriousFocus();
         return true;
       }
+    }
+
+    // Only open menu if still not extended
+    if (isExtendedActiveInUi()) {
+      markSuccess("chip-extended-after-ng");
+      return true;
     }
 
     const opened = await ensureMenuOpen();
     if (!opened && !hasThinkingUi()) {
-      // Still try ng with menu DOM present partially
-      logWarn("menu/thinking UI not confirmed; trying ng + retry open");
+      logWarn("menu/thinking UI not confirmed; trying ng anyway");
     }
 
-    // Strategy 1: Angular invoke with menu open (components exist)
+    // If opening the menu alone revealed chip already extended, stop.
+    if (isExtendedActiveInUi()) {
+      markSuccess("chip-extended-after-menu-open");
+      closeMenuIfWeOpened();
+      return true;
+    }
+
+    // Strategy 1: Angular with menu DOM present
     {
       const ngOk = tryInvokeAngularThinkingExtended();
       if (ngOk && (await waitForExtended(1000))) {
-        state.domEnableSucceeded = true;
-        state.lastDomDetail = "ng-invoke-with-menu";
+        markSuccess("ng-invoke-with-menu");
         logInfo("extended via Angular with menu");
-        closeMenuSoft();
+        closeMenuIfWeOpened();
         return true;
       }
       if (isExtendedActiveInUi()) {
-        state.domEnableSucceeded = true;
-        state.lastDomDetail = "ng-invoke-chip";
-        closeMenuSoft();
+        markSuccess("ng-invoke-chip");
+        closeMenuIfWeOpened();
         return true;
       }
     }
@@ -908,22 +949,18 @@
         state.toggleClickCount += 1;
         nativeClick(toggle.button);
         if (await waitForExtended(1000)) {
-          state.domEnableSucceeded = true;
-          state.lastDomDetail = "slide-toggle-click";
-          closeMenuSoft();
+          markSuccess("slide-toggle-click");
+          closeMenuIfWeOpened();
           return true;
         }
-      } else {
-        state.domEnableSucceeded = true;
-        state.lastDomDetail = "slide-toggle-already-on";
-        closeMenuSoft();
+      } else if (isExtendedActiveInUi()) {
+        markSuccess("slide-toggle-already-on");
+        closeMenuIfWeOpened();
         return true;
       }
-    } else {
-      logInfo("no mat-slide-toggle (expected on current UI)");
     }
 
-    // Strategy 3: click option row (single native click)
+    // Strategy 3: click option row (single native click, no focus/Enter)
     const opt = findExtendedOptionTarget();
     if (opt) {
       logInfo("extended option target", {
@@ -932,36 +969,38 @@
         score: opt.score,
         selected: opt.selected,
         target: describeEl(opt.target),
-        candidates: opt.candidates,
       });
 
+      // Already selected in list + chip confirms → done (don't force re-click)
       if (opt.selected && isExtendedActiveInUi()) {
-        state.domEnableSucceeded = true;
-        state.lastDomDetail = "option-already-selected";
-        closeMenuSoft();
+        markSuccess("option-already-selected");
+        closeMenuIfWeOpened();
         return true;
       }
 
-      // If option looks selected but chip doesn't, still re-click to force apply
+      // Selected in list but chip not yet — click once to apply
+      if (opt.selected && !isExtendedActiveInUi()) {
+        logInfo("option selected in menu but chip not 拡張 yet; click once");
+      }
+
       state.toggleClickCount += 1;
       const chipBefore = textOf(findMenuButton());
       nativeClick(opt.target);
-      logInfo("clicked extended option (native)", {
+      logInfo("clicked extended option (native, no focus)", {
         chipBefore,
         target: describeEl(opt.target),
       });
 
-      // Menu often closes on success → option becomes null; trust chip text
       if (await waitForExtended(1500)) {
-        state.domEnableSucceeded = true;
-        state.lastDomDetail = "option-click-chip-extended";
+        markSuccess("option-click-chip-extended");
         logInfo("success: chip shows extended after option click", {
           chip: textOf(findMenuButton()),
         });
+        // Selection often auto-closes menu; only close if still open and we opened it
+        closeMenuIfWeOpened();
         return true;
       }
 
-      // Retry click parent/child
       const parentBtn =
         opt.target.parentElement &&
         opt.target.parentElement.closest("button, [role='menuitem']");
@@ -969,38 +1008,10 @@
         logInfo("retry click parent", describeEl(parentBtn));
         nativeClick(parentBtn);
         if (await waitForExtended(1000)) {
-          state.domEnableSucceeded = true;
-          state.lastDomDetail = "option-parent-click";
+          markSuccess("option-parent-click");
+          closeMenuIfWeOpened();
           return true;
         }
-      }
-
-      // Keyboard activate
-      try {
-        opt.target.focus();
-        opt.target.dispatchEvent(
-          new KeyboardEvent("keydown", {
-            key: "Enter",
-            code: "Enter",
-            keyCode: 13,
-            bubbles: true,
-          })
-        );
-        opt.target.dispatchEvent(
-          new KeyboardEvent("keyup", {
-            key: "Enter",
-            code: "Enter",
-            keyCode: 13,
-            bubbles: true,
-          })
-        );
-      } catch (_) {
-        /* ignore */
-      }
-      if (await waitForExtended(800)) {
-        state.domEnableSucceeded = true;
-        state.lastDomDetail = "option-enter-key";
-        return true;
       }
 
       logWarn("option click did not produce 拡張 on chip", {
@@ -1014,17 +1025,18 @@
       });
     }
 
-    // Strategy 4: re-invoke Angular after DOM interactions
+    // Strategy 4: re-invoke Angular after DOM
     if (tryInvokeAngularThinkingExtended() && (await waitForExtended(1000))) {
-      state.domEnableSucceeded = true;
-      state.lastDomDetail = "ng-invoke-after-dom";
+      markSuccess("ng-invoke-after-dom");
+      closeMenuIfWeOpened();
       return true;
     }
 
     state.lastDomDetail = "all-strategies-failed";
     state.domEnableSucceeded = false;
-    // Leave menu as-is if open so user can see; soft-close only if open long
-    if (isModelMenuOpen()) closeMenuSoft();
+    // Do NOT Escape-close. Only close menu we opened so we don't leave junk open.
+    closeMenuIfWeOpened();
+    clearSpuriousFocus();
     return false;
   }
 
@@ -1038,7 +1050,12 @@
 
   function scheduleEnable(reason) {
     if (state.userDisabledThisSession) return;
+    // Hard stop once success is confirmed by chip
     if (state.domEnableSucceeded && isExtendedActiveInUi()) return;
+    if (isExtendedActiveInUi()) {
+      markSuccess("schedule-chip-already-extended");
+      return;
+    }
     if (enableTimer) clearTimeout(enableTimer);
     enableTimer = setTimeout(() => runEnable(reason), 300);
   }
@@ -1047,14 +1064,21 @@
     if (enableInFlight) return;
     if (state.userDisabledThisSession) return;
 
-    // Already good
+    // Already good — never open menu / never focus
     if (isExtendedActiveInUi()) {
-      state.domEnableSucceeded = true;
-      if (reason !== "poll") {
-        logInfo("chip already extended; marking success", {
+      if (!state.domEnableSucceeded || reason === "popup" || reason === "manual") {
+        logInfo("chip already extended; no UI action", {
           chip: textOf(findMenuButton()),
+          reason,
         });
       }
+      markSuccess("chip-already-extended");
+      // Still persist pref once if we have token and never wrote
+      if (state.atToken && !state.prefWriteAttempted) {
+        state.prefWriteAttempted = true;
+        writeThinkingPreference(THINKING_LEVEL_EXTENDED).catch(() => {});
+      }
+      emitToExtension("state", getPublicState());
       return;
     }
 
@@ -1088,6 +1112,12 @@
         }
       }
 
+      // Re-check after async pref write — may already be extended
+      if (isExtendedActiveInUi()) {
+        markSuccess("chip-after-pref");
+        return;
+      }
+
       if (!state.domEnableSucceeded) {
         await enableViaDomAndNg();
       }
@@ -1098,6 +1128,7 @@
       state.lastError = String(err);
     } finally {
       enableInFlight = false;
+      clearSpuriousFocus();
     }
   }
 
@@ -1106,7 +1137,7 @@
     const observer = new MutationObserver(() => {
       if (state.userDisabledThisSession) return;
       if (isExtendedActiveInUi()) {
-        state.domEnableSucceeded = true;
+        if (!state.domEnableSucceeded) markSuccess("mutation-chip-extended");
         return;
       }
       if (state.domEnableSucceeded) return;
@@ -1114,8 +1145,10 @@
       scheduled = true;
       setTimeout(() => {
         scheduled = false;
-        if (hasThinkingUi() || isModelMenuOpen()) {
-          scheduleEnable("mutation-menu");
+        // Only react if thinking UI is visible AND we're not done — do not
+        // reopen menus just because the user opened the picker.
+        if (!state.domEnableSucceeded && !isExtendedActiveInUi() && hasThinkingUi()) {
+          scheduleEnable("mutation-thinking-ui");
         }
       }, 250);
     });
@@ -1193,6 +1226,7 @@
         state.domEnableSucceeded = false;
         state.userDisabledThisSession = false;
         state.ngInvokeSucceeded = false;
+        state.menuOpenedByUs = false;
         attemptCount = 0;
         runEnable("popup");
       } else if (data.type === "clearLogs") {
@@ -1204,7 +1238,7 @@
   }
 
   function boot() {
-    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.2.0" });
+    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.3.0" });
     patchFetch();
     patchXHR();
     watchDom();
@@ -1217,16 +1251,19 @@
       if (state.userDisabledThisSession) return;
       if (isExtendedActiveInUi()) {
         if (!state.domEnableSucceeded) {
-          state.domEnableSucceeded = true;
+          markSuccess("poll-chip-extended");
           logInfo("poll: chip shows extended");
           emitToExtension("state", getPublicState());
         }
       }
     }, 2000);
 
-    const delays = [600, 1500, 3000, 5000, 8000, 12000, 18000];
+    // Fewer timers once success is common; stop scheduling if already extended
+    const delays = [600, 1500, 3000, 6000, 12000];
     for (const d of delays) {
-      setTimeout(() => scheduleEnable("timer-" + d), d);
+      setTimeout(() => {
+        if (!isExtendedActiveInUi()) scheduleEnable("timer-" + d);
+      }, d);
     }
 
     window.__geminiThinkingAuto = {
@@ -1236,6 +1273,7 @@
         state.domEnableSucceeded = false;
         state.userDisabledThisSession = false;
         state.ngInvokeSucceeded = false;
+        state.menuOpenedByUs = false;
         attemptCount = 0;
         return runEnable("manual");
       },
