@@ -1,0 +1,163 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0f1419;
+  --card: #1a2332;
+  --text: #e7ecf3;
+  --muted: #93a1b5;
+  --line: #2a3548;
+  --primary: #1a73e8;
+  --accent: #f9ab00;
+  --ok: #34a853;
+  --bad: #ea4335;
+  --warn: #f9ab00;
+  font-family: "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f7f9fc;
+    --card: #ffffff;
+    --text: #1f1f1f;
+    --muted: #5f6368;
+    --line: #e0e3e8;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 360px;
+  max-height: 560px;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--text);
+  padding: 14px;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.sub {
+  margin: 4px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.label {
+  color: var(--muted);
+}
+
+.value {
+  text-align: right;
+  word-break: break-all;
+}
+
+.mono {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+button {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(1.08);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+button.accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #202124;
+  font-weight: 600;
+}
+
+button.ghost {
+  background: transparent;
+}
+
+.log-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.log-view {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.35;
+  background: transparent;
+}
+
+footer {
+  margin-top: 4px;
+  text-align: center;
+}
+
+.ok {
+  color: var(--ok);
+}
+.bad {
+  color: var(--bad);
+}
+.warn {
+  color: var(--warn);
+}

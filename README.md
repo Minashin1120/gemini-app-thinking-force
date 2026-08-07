@@ -16,12 +16,25 @@
    `last_selected_thinking_level_on_web = 2`（強化版）を書き込みます。
 
 2. **UI 同期**  
-   モデルピッカー（`bard-mode-menu-button`）を開き、  
-   `thinking-level-toggle` がオフならクリックしてオンにします。
+   モデルピッカーを開き、`mat-slide-toggle` 内の `button[role=switch]`  
+   （強化版思考のスライド）をオンにします。  
+   ※ `data-test-id="thinking-level-toggle"` はヘッダー側であることが多く、  
+   本体トグルではないため直接は押しません。
 
 3. **手動オフの尊重**  
    同一タブセッション中にユーザーがトグルをオフにした場合は、  
    そのセッションでは再有効化しません（次のアクセス／リロードで再度オンを試みます）。
+
+## ポップアップ（拡張アイコン）
+
+ツールバーの拡張アイコンをクリックするとモーダル（ポップアップ）が開き、
+
+- 接続状態 / DOM 有効化 / 設定書き込みの成否
+- 直近ログの表示
+- **ログの JSON ダウンロード**
+- 今すぐ有効化 / ログクリア
+
+が使えます。ログ取得には **gemini.google.com のタブが開いていること** が必要です。
 
 ## デバッグ
 
@@ -30,6 +43,7 @@ Gemini のページコンソールで:
 ```js
 window.__geminiThinkingAuto.state
 window.__geminiThinkingAuto.enable()
+window.__geminiThinkingAuto.dump()
 ```
 
 ## リポジトリ構成

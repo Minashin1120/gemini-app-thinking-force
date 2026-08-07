@@ -83,9 +83,30 @@ HAR 上の実測:
 |------|----------------|
 | モデルメニューボタン | `bard-mode-menu-button` |
 | 思考レベル容器 | `thinking-level-container` |
-| **強化版トグル** | `thinking-level-toggle` |
+| 思考レベルヘッダー（注意） | `thinking-level-toggle` |
 | デスクトップピッカー | `thinking-level-picker-desktop` |
 | 思考レベル選択肢 | `thinking-level-option` |
+
+### 重要: トグルの実体
+
+`data-test-id="thinking-level-toggle"` は **ヘッダー行** にも付く。  
+実際の操作対象は内側の:
+
+```html
+<mat-slide-toggle>
+  <button role="switch" aria-checked="...">
+```
+
+`(change)` → `zR(event)` で  
+`event.checked ? THINKING_LEVEL_EXTENDED : STANDARD`。
+
+`checked` バインディング:
+
+```js
+checked = (selectedThinkingLevel === THINKING_LEVEL_EXTENDED)
+```
+
+拡張はヘッダーではなく **mat-slide-toggle の switch ボタン** を click する。
 
 コンポーネント名: `thinking-level-picker`  
 ラベル文言: `強化版思考モード` / 説明 `複雑なタスクに対して、より時間をかけて熟考`

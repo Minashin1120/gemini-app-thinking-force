@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gemini 強化版思考 Auto-On</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>強化版思考 Auto-On</h1>
+      <p class="sub">ログと状態の確認 / ダウンロード</p>
+    </header>
+
+    <section class="status card">
+      <div class="row">
+        <span class="label">接続</span>
+        <span id="conn" class="value">確認中…</span>
+      </div>
+      <div class="row">
+        <span class="label">DOM 有効化</span>
+        <span id="domOk" class="value">—</span>
+      </div>
+      <div class="row">
+        <span class="label">設定書き込み</span>
+        <span id="prefOk" class="value">—</span>
+      </div>
+      <div class="row">
+        <span class="label">ログ件数</span>
+        <span id="logCount" class="value">0</span>
+      </div>
+      <div class="row">
+        <span class="label">最終詳細</span>
+        <span id="detail" class="value mono">—</span>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="btnRefresh" type="button">更新</button>
+      <button id="btnEnable" type="button" class="primary">今すぐ有効化</button>
+      <button id="btnDownload" type="button" class="accent">ログをダウンロード</button>
+      <button id="btnClear" type="button" class="ghost">ログクリア</button>
+    </section>
+
+    <section class="card">
+      <div class="log-head">
+        <strong>直近ログ</strong>
+        <span id="logMeta" class="muted"></span>
+      </div>
+      <pre id="logView" class="log-view">読み込み中…</pre>
+    </section>
+
+    <footer class="muted">
+      Gemini タブを開いた状態で使用してください。
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
