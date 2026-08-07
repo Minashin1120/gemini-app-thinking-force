@@ -22,6 +22,14 @@
   const THINKING_LEVEL_EXTENDED_STR = "THINKING_LEVEL_EXTENDED";
   const MAX_LOGS = 2000;
 
+  /** Startup / retry timing (v1.4: prioritize first-paint enable speed). */
+  const EARLY_WINDOW_MS = 6000;
+  const SCHEDULE_DEBOUNCE_EARLY_MS = 40;
+  const SCHEDULE_DEBOUNCE_LATE_MS = 120;
+  const ENABLE_THROTTLE_EARLY_MS = 200;
+  const ENABLE_THROTTLE_LATE_MS = 700;
+  const POLL_STEP_MS = 50;
+
   const LABEL_PATTERNS = [
     /強化版思考モード/,
     /強化版思考/,
@@ -122,6 +130,10 @@
 
   function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
+  }
+
+  function isEarlyBoot() {
+    return Date.now() - state.bootAt < EARLY_WINDOW_MS;
   }
 
   function getPublicState() {
@@ -809,8 +821,9 @@
 
     if (isModelMenuOpen()) {
       logInfo("model menu already open; waiting for thinking UI (no re-click)");
+      // ~1.25s max @ 50ms steps (was 2.5s @ 100ms)
       for (let i = 0; i < 25; i++) {
-        await sleep(100);
+        await sleep(POLL_STEP_MS);
         if (hasThinkingUi()) return true;
         if (isExtendedActiveInUi()) return true;
         if (i === 8) {
@@ -840,11 +853,14 @@
     state.menuOpenedByUs = true;
     nativeClick(btn);
 
+    // ~2s max @ 50ms (was 4s @ 100ms). Success usually within 1–3 frames.
     for (let i = 0; i < 40; i++) {
-      await sleep(100);
+      await sleep(POLL_STEP_MS);
       if (isExtendedActiveInUi()) return true;
       if (hasThinkingUi()) {
-        logInfo("thinking UI visible after open", { waitMs: (i + 1) * 100 });
+        logInfo("thinking UI visible after open", {
+          waitMs: (i + 1) * POLL_STEP_MS,
+        });
         return true;
       }
       if (i === 10) {
@@ -871,10 +887,10 @@
   }
 
   async function waitForExtended(msTotal) {
-    const steps = Math.max(1, Math.floor(msTotal / 100));
+    const steps = Math.max(1, Math.floor(msTotal / POLL_STEP_MS));
     for (let i = 0; i < steps; i++) {
       if (isExtendedActiveInUi()) return true;
-      await sleep(100);
+      await sleep(POLL_STEP_MS);
     }
     return isExtendedActiveInUi();
   }
@@ -896,10 +912,18 @@
       return true;
     }
 
-    // Strategy 0: Angular invoke WITHOUT opening menu
+    // Nothing to drive yet — avoid expensive ng scans on every early timer tick.
+    // MutationObserver / early poll will re-arm as soon as the chip mounts.
+    if (!findMenuButton() && !hasThinkingUi() && !isModelMenuOpen()) {
+      state.lastDomDetail = "ui-not-ready";
+      logInfo("ui not ready yet (no model chip)");
+      return false;
+    }
+
+    // Strategy 0: Angular invoke WITHOUT opening menu (short confirm window)
     if (!state.ngInvokeSucceeded) {
       const ngOk = tryInvokeAngularThinkingExtended();
-      if (ngOk && (await waitForExtended(800))) {
+      if (ngOk && (await waitForExtended(350))) {
         markSuccess("ng-invoke-before-menu");
         logInfo("extended via Angular before menu");
         clearSpuriousFocus();
@@ -928,7 +952,7 @@
     // Strategy 1: Angular with menu DOM present
     {
       const ngOk = tryInvokeAngularThinkingExtended();
-      if (ngOk && (await waitForExtended(1000))) {
+      if (ngOk && (await waitForExtended(500))) {
         markSuccess("ng-invoke-with-menu");
         logInfo("extended via Angular with menu");
         closeMenuIfWeOpened();
@@ -948,7 +972,7 @@
       if (!toggle.on) {
         state.toggleClickCount += 1;
         nativeClick(toggle.button);
-        if (await waitForExtended(1000)) {
+        if (await waitForExtended(600)) {
           markSuccess("slide-toggle-click");
           closeMenuIfWeOpened();
           return true;
@@ -991,7 +1015,7 @@
         target: describeEl(opt.target),
       });
 
-      if (await waitForExtended(1500)) {
+      if (await waitForExtended(900)) {
         markSuccess("option-click-chip-extended");
         logInfo("success: chip shows extended after option click", {
           chip: textOf(findMenuButton()),
@@ -1007,7 +1031,7 @@
       if (parentBtn && parentBtn !== opt.target) {
         logInfo("retry click parent", describeEl(parentBtn));
         nativeClick(parentBtn);
-        if (await waitForExtended(1000)) {
+        if (await waitForExtended(600)) {
           markSuccess("option-parent-click");
           closeMenuIfWeOpened();
           return true;
@@ -1026,7 +1050,7 @@
     }
 
     // Strategy 4: re-invoke Angular after DOM
-    if (tryInvokeAngularThinkingExtended() && (await waitForExtended(1000))) {
+    if (tryInvokeAngularThinkingExtended() && (await waitForExtended(500))) {
       markSuccess("ng-invoke-after-dom");
       closeMenuIfWeOpened();
       return true;
@@ -1047,6 +1071,8 @@
   let enableTimer = null;
   let enableInFlight = false;
   let attemptCount = 0;
+  /** Coalesce concurrent scheduleEnable reasons while waiting for debounce. */
+  let pendingReason = null;
 
   function scheduleEnable(reason) {
     if (state.userDisabledThisSession) return;
@@ -1056,8 +1082,16 @@
       markSuccess("schedule-chip-already-extended");
       return;
     }
+    pendingReason = reason || pendingReason || "unknown";
     if (enableTimer) clearTimeout(enableTimer);
-    enableTimer = setTimeout(() => runEnable(reason), 300);
+    const delay = isEarlyBoot()
+      ? SCHEDULE_DEBOUNCE_EARLY_MS
+      : SCHEDULE_DEBOUNCE_LATE_MS;
+    enableTimer = setTimeout(() => {
+      const r = pendingReason || reason;
+      pendingReason = null;
+      runEnable(r);
+    }, delay);
   }
 
   async function runEnable(reason) {
@@ -1088,8 +1122,42 @@
       state.domEnableSucceeded = false;
     }
 
+    // Pref may be written as soon as we have a token (does not need chip).
+    if (state.atToken) {
+      if (!state.prefWriteAttempted || !state.prefWriteSucceeded) {
+        state.prefWriteAttempted = true;
+        writeThinkingPreference(THINKING_LEVEL_EXTENDED).catch(() => {});
+      }
+    }
+
+    // Cheap readiness gate — does NOT consume throttle / attemptCount so the
+    // first real attempt can start the instant the model chip mounts.
+    const uiReady =
+      !!findMenuButton() || hasThinkingUi() || isModelMenuOpen();
+    if (!uiReady && reason !== "popup" && reason !== "manual") {
+      return;
+    }
+
     const now = Date.now();
-    if (now - state.lastEnableAt < 1200 && attemptCount > 0) return;
+    const throttleMs = isEarlyBoot()
+      ? ENABLE_THROTTLE_EARLY_MS
+      : ENABLE_THROTTLE_LATE_MS;
+    // Manual / popup always allowed; early boot uses short throttle.
+    if (
+      reason !== "popup" &&
+      reason !== "manual" &&
+      now - state.lastEnableAt < throttleMs &&
+      attemptCount > 0
+    ) {
+      // Re-queue so a "chip just appeared" signal is not lost under throttle
+      if (!enableTimer) {
+        enableTimer = setTimeout(
+          () => runEnable(reason || "throttled-retry"),
+          throttleMs - (now - state.lastEnableAt) + 10
+        );
+      }
+      return;
+    }
     state.lastEnableAt = now;
     state.lastReason = reason;
     enableInFlight = true;
@@ -1103,18 +1171,12 @@
         hasBl: !!state.bl,
         hasSid: !!state.fSid,
         chip: textOf(findMenuButton()),
+        early: isEarlyBoot(),
+        elapsedMs: now - state.bootAt,
       });
 
-      if (state.atToken) {
-        if (!state.prefWriteAttempted || !state.prefWriteSucceeded) {
-          state.prefWriteAttempted = true;
-          await writeThinkingPreference(THINKING_LEVEL_EXTENDED);
-        }
-      }
-
-      // Re-check after async pref write — may already be extended
       if (isExtendedActiveInUi()) {
-        markSuccess("chip-after-pref");
+        markSuccess("chip-before-dom");
         return;
       }
 
@@ -1129,6 +1191,9 @@
     } finally {
       enableInFlight = false;
       clearSpuriousFocus();
+      // Do not auto-reopen the menu here after a full attempt — that caused
+      // multi-second thrashing. Early timers / mutation / poll re-arm when the
+      // chip first mounts.
     }
   }
 
@@ -1145,12 +1210,15 @@
       scheduled = true;
       setTimeout(() => {
         scheduled = false;
-        // Only react if thinking UI is visible AND we're not done — do not
-        // reopen menus just because the user opened the picker.
-        if (!state.domEnableSucceeded && !isExtendedActiveInUi() && hasThinkingUi()) {
+        if (state.domEnableSucceeded || isExtendedActiveInUi()) return;
+        // React as soon as the model chip / thinking UI mounts — this is the
+        // main path for "enable on first paint" (timers alone are too late).
+        if (hasThinkingUi()) {
           scheduleEnable("mutation-thinking-ui");
+        } else if (findMenuButton()) {
+          scheduleEnable("mutation-menu-button");
         }
-      }, 250);
+      }, isEarlyBoot() ? 40 : 120);
     });
 
     const start = () => {
@@ -1198,6 +1266,9 @@
       state.prefWriteAttempted = false;
       state.ngInvokeSucceeded = false;
       attemptCount = 0;
+      state.lastEnableAt = 0;
+      // Re-open early timing window so the new view enables as fast as load.
+      state.bootAt = Date.now();
       scheduleEnable("navigation");
     };
     const wrap = (name) => {
@@ -1238,7 +1309,7 @@
   }
 
   function boot() {
-    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.3.0" });
+    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.4.0" });
     patchFetch();
     patchXHR();
     watchDom();
@@ -1258,13 +1329,32 @@
       }
     }, 2000);
 
-    // Fewer timers once success is common; stop scheduling if already extended
-    const delays = [600, 1500, 3000, 6000, 12000];
+    // Aggressive early timers: fire as soon as SPA shell might have the chip.
+    // Old v1.3 schedule started at 600ms and throttled retries by 1200ms.
+    const delays = [0, 80, 200, 400, 700, 1200, 2000, 3500, 6000, 10000];
     for (const d of delays) {
       setTimeout(() => {
-        if (!isExtendedActiveInUi()) scheduleEnable("timer-" + d);
+        if (state.userDisabledThisSession) return;
+        if (isExtendedActiveInUi()) return;
+        scheduleEnable("timer-" + d);
       }, d);
     }
+
+    // Dense early poll for menu button (covers gap between mutations)
+    const earlyPollUntil = Date.now() + EARLY_WINDOW_MS;
+    const earlyPollId = setInterval(() => {
+      if (Date.now() > earlyPollUntil || state.userDisabledThisSession) {
+        clearInterval(earlyPollId);
+        return;
+      }
+      if (isExtendedActiveInUi()) {
+        if (!state.domEnableSucceeded) markSuccess("early-poll-chip");
+        clearInterval(earlyPollId);
+        return;
+      }
+      if (state.domEnableSucceeded || enableInFlight) return;
+      if (findMenuButton()) scheduleEnable("early-poll-chip-ready");
+    }, 100);
 
     window.__geminiThinkingAuto = {
       state,
