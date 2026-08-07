@@ -1,0 +1,27 @@
+# Large / sensitive capture data
+*.har
+*.har.gz
+
+# Handoff (must stay untracked — see AGENTS.md)
+.handoff/
+
+# Local analysis scratch
+analyze_*.py
+*_snippet.txt
+model_list_snippet.txt
+app_page_snippet.txt
+pref_map_snippet.txt
+__pycache__/
+*.pyc
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Logs
+*.log
