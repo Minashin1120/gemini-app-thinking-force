@@ -85,7 +85,6 @@ window.__geminiThinkingAuto.tryNg()      // Angular 経由の有効化を試行
 │   └── icons/
 ├── docs/               # HAR 調査メモなど
 ├── tools/              # 調査用スクリプト
-├── AGENTS.md           # 開発・運用メモ（AI エージェント向け含む）
 └── README.md
 ```
 

@@ -2,7 +2,7 @@
 *.har
 *.har.gz
 
-# Handoff (must stay untracked — see AGENTS.md)
+# Handoff (must stay untracked)
 .handoff/
 
 # Local analysis scratch
@@ -29,4 +29,3 @@ Desktop.ini
 # Local archives
 *.7z
 *.zip
-
