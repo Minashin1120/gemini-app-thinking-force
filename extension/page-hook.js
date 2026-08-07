@@ -2,10 +2,13 @@
  * Page-world (MAIN) script.
  * Enables 強化版思考モード (THINKING_LEVEL_EXTENDED) on gemini.google.com.
  *
- * Fix notes:
- * - data-test-id="thinking-level-toggle" is often on a HEADER wrapper, not the
- *   interactive mat-slide-toggle. We must click mat-slide-toggle's switch button.
- * - checked is bound to (selectedThinkingLevel === THINKING_LEVEL_EXTENDED).
+ * Lessons from user logs (v1.1):
+ * - L5adhe pref write succeeds, but UI state is separate
+ * - No mat-slide-toggle in current UI — option rows only
+ * - Synthetic multi-event clicks often fail; after:null usually means menu closed
+ * - Success signal: model chip text contains "拡張" (e.g. "Flash-Lite拡張")
+ * - Re-clicking menu button while open CLOSES the menu (false "thinking UI not found")
+ * - Prefer Angular component method invoke (yR / zR / onSelect) over DOM clicks
  */
 (function () {
   "use strict";
@@ -16,6 +19,7 @@
   const PREF_FIELD_ID = 265;
   const PREF_INDEX = PREF_FIELD_ID - 1;
   const THINKING_LEVEL_EXTENDED = 2;
+  const THINKING_LEVEL_EXTENDED_STR = "THINKING_LEVEL_EXTENDED";
   const MAX_LOGS = 2000;
 
   const LABEL_PATTERNS = [
@@ -34,6 +38,8 @@
     prefWriteSucceeded: false,
     domEnableAttempted: false,
     domEnableSucceeded: false,
+    ngInvokeAttempted: false,
+    ngInvokeSucceeded: false,
     userDisabledThisSession: false,
     lastEnableAt: 0,
     lastReason: null,
@@ -58,9 +64,10 @@
             return {
               tag: v.tagName,
               id: v.id,
-              class: v.className,
+              class: String(v.className || "").slice(0, 120),
               testId: v.getAttribute("data-test-id"),
-              text: (v.textContent || "").trim().slice(0, 80),
+              role: v.getAttribute("role"),
+              text: (v.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80),
             };
           }
           if (typeof v === "bigint") return String(v);
@@ -90,7 +97,8 @@
     logs.push(entry);
     if (logs.length > MAX_LOGS) logs.splice(0, logs.length - MAX_LOGS);
     try {
-      const args = data === undefined ? [LOG_PREFIX, msg] : [LOG_PREFIX, msg, data];
+      const args =
+        data === undefined ? [LOG_PREFIX, msg] : [LOG_PREFIX, msg, data];
       if (level === "error") console.error(...args);
       else if (level === "warn") console.warn(...args);
       else console.debug(...args);
@@ -120,6 +128,8 @@
       logCount: logs.length,
       url: location.href,
       hasAtToken: !!state.atToken,
+      menuButtonText: textOf(findMenuButton()),
+      uiLooksExtended: isExtendedActiveInUi(),
     };
   }
 
@@ -290,7 +300,7 @@
     if (
       style.display === "none" ||
       style.visibility === "hidden" ||
-      style.opacity === "0"
+      Number(style.opacity) === 0
     ) {
       return false;
     }
@@ -307,9 +317,7 @@
     }
     const walk = root.querySelectorAll("*");
     for (const el of walk) {
-      if (el.shadowRoot) {
-        out.push(...queryAllDeep(selector, el.shadowRoot));
-      }
+      if (el.shadowRoot) out.push(...queryAllDeep(selector, el.shadowRoot));
     }
     return out;
   }
@@ -331,193 +339,189 @@
     const selectors = [
       '[data-test-id="bard-mode-menu-button"]',
       '[data-test-id="bard-mode-switcher"] button',
-      "bard-mode-switcher button",
+      "button.input-area-switch",
     ];
     for (const sel of selectors) {
       const el = queryDeep(sel);
       if (el && isVisible(el)) return el;
     }
-    const candidates = Array.from(
-      document.querySelectorAll("button, [role='button']")
-    ).filter(isVisible);
-    return (
-      candidates.find((el) => {
-        const t = textOf(el);
-        return (
-          /Flash|Pro|Gemini|思考|Thinking|Deep Think/i.test(t) && t.length < 100
-        );
-      }) || null
-    );
-  }
-
-  /**
-   * Resolve the actual interactive switch control for 強化版思考.
-   * Prefer mat-slide-toggle near the label, not the header test-id wrapper.
-   */
-  function findSlideToggleControls() {
-    const results = [];
-
-    // 1) mat-slide-toggle inside thinking containers / pickers
-    const hosts = [
-      ...queryAllDeep("mat-slide-toggle"),
-      ...queryAllDeep(".mat-mdc-slide-toggle"),
-    ];
-
-    for (const host of hosts) {
-      if (!isVisible(host)) continue;
-      // Prefer toggles near extended-thinking label text
-      const near = host.closest(
-        '[data-test-id="thinking-level-container"], [data-test-id="thinking-level-picker-desktop"], thinking-level-picker, [data-test-id="thinking-level-toggle"], .thinking-level-header'
-      );
-      const contextText = textOf(
-        near || host.parentElement || host
-      );
-      const labelNear = matchesLabel(contextText) || matchesLabel(textOf(host));
-      const btn =
-        host.querySelector(
-          'button[role="switch"], button.mdc-switch, .mdc-switch, input[type="checkbox"]'
-        ) || host;
-      results.push({
-        host,
-        button: btn,
-        score: (labelNear ? 50 : 0) + (near ? 20 : 0) + (isVisible(btn) ? 10 : 0),
-        contextText: contextText.slice(0, 120),
-      });
-    }
-
-    // 2) role=switch near 強化版 label
-    for (const labelEl of queryAllDeep("span, div, label, p")) {
-      const t = textOf(labelEl);
-      if (!matchesLabel(t) || t.length > 40) continue;
-      const root =
-        labelEl.closest(
-          '[data-test-id="thinking-level-container"], [data-test-id="thinking-level-toggle"], .thinking-level-header, thinking-level-picker, mat-list-item, li, div'
-        ) || labelEl.parentElement;
-      if (!root) continue;
-      const btn = root.querySelector(
-        'button[role="switch"], mat-slide-toggle button, .mdc-switch, input[type="checkbox"]'
-      );
-      if (!btn) continue;
-      const host = btn.closest("mat-slide-toggle, .mat-mdc-slide-toggle") || btn;
-      results.push({
-        host,
-        button: btn,
-        score: 80,
-        contextText: t,
-      });
-    }
-
-    results.sort((a, b) => b.score - a.score);
-    return results;
-  }
-
-  function findBestToggle(opts) {
-    const silent = !!(opts && opts.silent);
-    const list = findSlideToggleControls().filter((x) => x.score >= 20);
-    if (!silent) {
-      logInfo("toggle candidates", {
-        count: list.length,
-        top: list.slice(0, 5).map((x) => ({
-          score: x.score,
-          contextText: x.contextText,
-          host: x.host,
-          button: x.button,
-          on: isControlOn(x.button, x.host),
-        })),
-      });
-    }
-    return list[0] || null;
-  }
-
-  function findExtendedOption() {
-    // Menu option rows for thinking levels
-    const options = [
-      ...queryAllDeep('[data-test-id="thinking-level-option"]'),
-      ...queryAllDeep('[data-test-id="bard-mode-option-"]'),
-      ...queryAllDeep("button, [role='menuitem'], [role='option']"),
-    ];
-    const seen = new Set();
-    for (const el of options) {
-      if (seen.has(el) || !isVisible(el)) continue;
-      seen.add(el);
-      const t = textOf(el);
-      if (!matchesLabel(t)) continue;
-      // Avoid huge containers
-      if (t.length > 120) continue;
-      const disabled =
-        el.getAttribute("aria-disabled") === "true" ||
-        el.classList.contains("disabled") ||
-        el.hasAttribute("disabled");
-      if (disabled) continue;
-      const selected =
-        el.classList.contains("selected") ||
-        el.getAttribute("aria-selected") === "true" ||
-        el.getAttribute("aria-checked") === "true";
-      return { el, text: t, selected };
-    }
     return null;
   }
 
-  function isControlOn(button, host) {
-    const nodes = [button, host].filter(Boolean);
-    for (const n of nodes) {
-      if (!n) continue;
-      const aria = n.getAttribute && n.getAttribute("aria-checked");
-      if (aria === "true") return true;
-      if (aria === "false") return false;
-      if (typeof n.checked === "boolean") return n.checked;
-      if (n.classList) {
+  /**
+   * Primary success signal from real UI (user log: "Flash-Lite拡張").
+   */
+  function isExtendedActiveInUi() {
+    const btn = findMenuButton();
+    if (!btn) return false;
+    const t = textOf(btn);
+    // Japanese UI appends "拡張" when THINKING_LEVEL_EXTENDED is selected
+    if (/拡張/.test(t)) return true;
+    if (/強化/.test(t)) return true;
+    if (/Extended/i.test(t)) return true;
+    // Avoid bare "Thinking" which may appear for other reasons
+    return false;
+  }
+
+  function isModelMenuOpen() {
+    const btn = findMenuButton();
+    if (btn) {
+      const expanded = btn.getAttribute("aria-expanded");
+      if (expanded === "true") return true;
+      if (expanded === "false") {
+        // still check overlay — some builds omit aria-expanded
+      }
+    }
+
+    const overlaySelectors = [
+      '[data-test-id="bard-mode-popover-menu"]',
+      '[data-test-id="bard-mode-desktop-gem-menu"]',
+      '[data-test-id="gem-mode-menu"]',
+      '[data-test-id="thinking-level-picker-desktop"]',
+      '[data-test-id="thinking-level-list"]',
+      '[data-test-id="thinking-level-option"]',
+      ".cdk-overlay-pane",
+    ];
+
+    for (const sel of overlaySelectors) {
+      for (const el of queryAllDeep(sel)) {
+        if (!isVisible(el)) continue;
+        const t = textOf(el);
         if (
-          n.classList.contains("mdc-switch--selected") ||
-          n.classList.contains("mat-mdc-slide-toggle-checked") ||
-          n.classList.contains("mat-checked")
+          sel !== ".cdk-overlay-pane" ||
+          /Flash|Pro|Gemini|思考|標準|強化|Thinking|Deep Think/i.test(t)
         ) {
+          if (sel === ".cdk-overlay-pane" && t.length < 8) continue;
           return true;
         }
       }
     }
-    if (host) {
-      const sw = host.querySelector(
-        '[aria-checked], .mdc-switch, button[role="switch"]'
-      );
-      if (sw && sw !== button) return isControlOn(sw, null);
+    return false;
+  }
+
+  function hasThinkingUi() {
+    if (queryDeep('[data-test-id="thinking-level-option"]')) return true;
+    if (queryDeep('[data-test-id="thinking-level-list"]')) return true;
+    if (queryDeep('[data-test-id="thinking-level-picker-desktop"]')) return true;
+    if (queryDeep('[data-test-id="thinking-level-toggle"]')) return true;
+    if (queryDeep("mat-slide-toggle") && matchesLabel(document.body.innerText)) {
+      // weak
+    }
+    // Any visible option-like node with 強化版
+    for (const el of queryAllDeep(
+      'button, [role="menuitem"], [data-test-id*="option"], [data-test-id*="mode"]'
+    )) {
+      if (!isVisible(el)) continue;
+      const t = textOf(el);
+      if (matchesLabel(t) && t.length < 80) return true;
     }
     return false;
   }
 
-  function isExtendedModeUiActive() {
-    // Model chip / header may show "拡張" or "強化"
-    const btn = findMenuButton();
-    if (btn) {
-      const t = textOf(btn);
-      if (/拡張|強化版|Extended|Thinking/i.test(t) && !/標準/.test(t)) {
-        // weak signal
-      }
-    }
-    const best = findBestToggle({ silent: true });
-    if (best && isControlOn(best.button, best.host)) return true;
-    const opt = findExtendedOption();
-    if (opt && opt.selected) return true;
-    return false;
+  function describeEl(el) {
+    if (!el) return null;
+    return {
+      tag: el.tagName,
+      testId: el.getAttribute("data-test-id"),
+      role: el.getAttribute("role"),
+      ariaChecked: el.getAttribute("aria-checked"),
+      ariaSelected: el.getAttribute("aria-selected"),
+      ariaDisabled: el.getAttribute("aria-disabled"),
+      class: String(el.className || "").slice(0, 100),
+      text: textOf(el).slice(0, 100),
+      disabled: !!el.disabled,
+    };
   }
 
-  function dispatchPointerSequence(el) {
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
-    const common = {
-      bubbles: true,
-      cancelable: true,
-      view: window,
-      clientX: x,
-      clientY: y,
-      pointerId: 1,
-      pointerType: "mouse",
-      isPrimary: true,
-      buttons: 1,
+  /**
+   * Find the clickable node for 強化版思考 option.
+   */
+  function findExtendedOptionTarget() {
+    const candidates = [];
+
+    const push = (el, score, why) => {
+      if (!el || !isVisible(el)) return;
+      const t = textOf(el);
+      if (!matchesLabel(t)) return;
+      if (t.length > 100) return;
+      candidates.push({ el, score, why, text: t });
     };
 
+    for (const el of queryAllDeep('[data-test-id="thinking-level-option"]')) {
+      push(el, 100, "thinking-level-option");
+    }
+    for (const el of queryAllDeep(
+      '[data-test-id^="bard-mode-option"], [data-test-id^="bard-mode-sub-option"]'
+    )) {
+      push(el, 80, "bard-mode-option");
+    }
+    for (const el of queryAllDeep(
+      'button[role="menuitem"], [role="menuitem"], button.mat-mdc-menu-item, .mat-mdc-menu-item'
+    )) {
+      push(el, 60, "menuitem");
+    }
+    for (const el of queryAllDeep("button, [role='button'], [role='option']")) {
+      push(el, 30, "button-ish");
+    }
+
+    candidates.sort((a, b) => b.score - a.score);
+    if (!candidates.length) return null;
+
+    const best = candidates[0];
+    // Prefer actual interactive host
+    let target = best.el;
+    const host =
+      target.closest(
+        '[data-test-id="thinking-level-option"], [data-test-id^="bard-mode-option"], [data-test-id^="bard-mode-sub-option"], button, [role="menuitem"], .mat-mdc-menu-item'
+      ) || target;
+    if (host) target = host;
+
+    const selected =
+      target.classList.contains("selected") ||
+      target.getAttribute("aria-selected") === "true" ||
+      target.getAttribute("aria-checked") === "true" ||
+      !!target.querySelector(".thinking-level-check, [fontIcon='check'], .mode-check");
+
+    return {
+      target,
+      text: best.text,
+      score: best.score,
+      why: best.why,
+      selected,
+      candidates: candidates.slice(0, 6).map((c) => ({
+        why: c.why,
+        score: c.score,
+        text: c.text,
+        el: describeEl(c.el),
+      })),
+    };
+  }
+
+  function findSlideToggle() {
+    for (const host of queryAllDeep("mat-slide-toggle, .mat-mdc-slide-toggle")) {
+      if (!isVisible(host)) continue;
+      const ctx = textOf(host.parentElement || host);
+      if (!matchesLabel(ctx) && !matchesLabel(textOf(host))) continue;
+      const button =
+        host.querySelector(
+          'button[role="switch"], button.mdc-switch, .mdc-switch, input[type="checkbox"]'
+        ) || host;
+      const on =
+        button.getAttribute("aria-checked") === "true" ||
+        host.classList.contains("mat-mdc-slide-toggle-checked") ||
+        host.classList.contains("mdc-switch--selected");
+      return { host, button, on };
+    }
+    return null;
+  }
+
+  function nativeClick(el) {
+    if (!el) return;
+    try {
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } catch (_) {
+      /* ignore */
+    }
     try {
       el.focus({ preventScroll: true });
     } catch (_) {
@@ -528,73 +532,257 @@
       }
     }
 
-    const types = [
-      ["pointerover", PointerEvent],
-      ["pointerenter", PointerEvent],
-      ["mouseover", MouseEvent],
-      ["mouseenter", MouseEvent],
-      ["pointerdown", PointerEvent],
-      ["mousedown", MouseEvent],
-      ["pointerup", PointerEvent],
-      ["mouseup", MouseEvent],
-      ["click", MouseEvent],
-    ];
+    // Prefer a single native click() — creates a trusted-ish activation path.
+    try {
+      if (typeof el.click === "function") {
+        el.click();
+        return;
+      }
+    } catch (_) {
+      /* fall through */
+    }
 
-    for (const [type, Ctor] of types) {
-      try {
-        el.dispatchEvent(new Ctor(type, common));
-      } catch (_) {
-        try {
-          el.dispatchEvent(new MouseEvent(type, common));
-        } catch (__) {
-          /* ignore */
+    const rect = el.getBoundingClientRect();
+    const opts = {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      button: 0,
+      buttons: 1,
+    };
+    el.dispatchEvent(new MouseEvent("mousedown", opts));
+    el.dispatchEvent(new MouseEvent("mouseup", opts));
+    el.dispatchEvent(new MouseEvent("click", opts));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Angular Ivy: find component instances and call yR / zR / onSelect
+  // ---------------------------------------------------------------------------
+
+  let ngCache = { at: 0, hits: [] };
+
+  function collectNgObjects(limit = 5000) {
+    const now = Date.now();
+    if (ngCache.hits.length && now - ngCache.at < 2000) return ngCache.hits;
+
+    const found = [];
+    const seen = new Set();
+    // Prefer menu/overlay subtree if present (faster + more relevant)
+    const roots = [];
+    for (const sel of [
+      ".cdk-overlay-container",
+      '[data-test-id="bard-mode-popover-menu"]',
+      '[data-test-id="gem-mode-menu"]',
+      "body",
+    ]) {
+      const r = document.querySelector(sel);
+      if (r) roots.push(r);
+    }
+    if (!roots.length) roots.push(document.documentElement);
+
+    for (const root of roots) {
+      const els = root.querySelectorAll("*");
+      for (let i = 0; i < els.length && found.length < limit; i++) {
+        const el = els[i];
+        const ctx = el.__ngContext__;
+        if (!ctx) continue;
+
+        const visit = (node, depth) => {
+          if (!node || depth > 3) return;
+          if (typeof node !== "object") return;
+          if (seen.has(node)) return;
+          seen.add(node);
+          found.push({ obj: node, el });
+          if (depth < 2 && !Array.isArray(node)) {
+            try {
+              for (const k of Object.keys(node)) {
+                if (k.startsWith("_")) continue;
+                const v = node[k];
+                if (
+                  v &&
+                  typeof v === "object" &&
+                  !seen.has(v) &&
+                  (typeof v.yR === "function" ||
+                    typeof v.zR === "function" ||
+                    typeof v.onSelect === "function")
+                ) {
+                  visit(v, depth + 1);
+                }
+              }
+            } catch (_) {
+              /* ignore */
+            }
+          }
+        };
+
+        if (Array.isArray(ctx)) {
+          for (const item of ctx) visit(item, 0);
+        } else {
+          visit(ctx, 0);
         }
+      }
+      if (found.length >= limit) break;
+    }
+
+    ngCache = { at: now, hits: found };
+    return found;
+  }
+
+  function tryInvokeAngularThinkingExtended() {
+    state.ngInvokeAttempted = true;
+    const TARGET = THINKING_LEVEL_EXTENDED_STR;
+    const hits = collectNgObjects();
+    logInfo("ng object scan", { count: hits.length });
+
+    const attempts = [];
+
+    for (const { obj, el } of hits) {
+      try {
+        // thinking-level-picker: zR({checked:true}) → onSelect(EXTENDED)
+        if (typeof obj.zR === "function") {
+          attempts.push("zR");
+          obj.zR({ checked: true });
+          logInfo("invoked zR({checked:true})", { el: describeEl(el) });
+          state.ngInvokeSucceeded = true;
+          return true;
+        }
+      } catch (err) {
+        logWarn("zR invoke failed", String(err));
       }
     }
 
-    // Native click as final fallback (often required for Angular Material)
-    try {
-      if (typeof el.click === "function") el.click();
-    } catch (_) {
-      /* ignore */
-    }
-  }
-
-  /**
-   * mat-slide-toggle listens to (change) with {checked:boolean}.
-   * If native click fails, synthesize a change-like payload via input.
-   */
-  function forceToggleOn(host, button) {
-    if (!host && !button) return false;
-
-    // Prefer clicking the switch button
-    const target =
-      (button && isVisible(button) && button) ||
-      (host &&
-        host.querySelector(
-          'button[role="switch"], button.mdc-switch, .mdc-switch__handle-track, .mdc-switch'
-        )) ||
-      host;
-
-    logInfo("forceToggleOn click target", { target, host, button });
-    dispatchPointerSequence(target);
-
-    // Also try label / track
-    if (host) {
-      const track = host.querySelector(
-        ".mdc-switch__track, .mdc-switch__handle, label"
-      );
-      if (track && track !== target) dispatchPointerSequence(track);
+    for (const { obj, el } of hits) {
+      try {
+        // mode switcher: yR("THINKING_LEVEL_EXTENDED")
+        if (typeof obj.yR === "function") {
+          // Heuristic: components that know thinking levels
+          const hasThinkingHints =
+            obj.hA !== undefined ||
+            obj.sta !== undefined ||
+            obj.pz !== undefined ||
+            obj.Vb !== undefined ||
+            obj.TVd !== undefined ||
+            (obj.Qkc && typeof obj.Qkc.emit === "function");
+          if (!hasThinkingHints && typeof obj.zR !== "function") {
+            // Still try yR if method name exists alongside mode lists
+            if (!obj.Zfa && !obj.Ab && !obj.Aa) continue;
+          }
+          attempts.push("yR");
+          obj.yR(TARGET);
+          logInfo("invoked yR(THINKING_LEVEL_EXTENDED)", {
+            el: describeEl(el),
+            keys: Object.keys(obj).slice(0, 20),
+          });
+          state.ngInvokeSucceeded = true;
+          return true;
+        }
+      } catch (err) {
+        logWarn("yR invoke failed", String(err));
+      }
     }
 
-    return true;
+    for (const { obj, el } of hits) {
+      try {
+        if (typeof obj.onSelect === "function" && typeof obj.pz === "function") {
+          const list = obj.pz();
+          if (Array.isArray(list)) {
+            const cfg = list.find(
+              (x) => x && (x.ti === TARGET || x.ti === "THINKING_LEVEL_EXTENDED")
+            );
+            if (cfg) {
+              attempts.push("onSelect");
+              obj.onSelect(cfg);
+              logInfo("invoked onSelect(extended cfg)", {
+                el: describeEl(el),
+                ti: cfg.ti,
+              });
+              state.ngInvokeSucceeded = true;
+              return true;
+            }
+          }
+        }
+      } catch (err) {
+        logWarn("onSelect invoke failed", String(err));
+      }
+    }
+
+    // BehaviorSubject-like: Aa.next(THINKING_LEVEL_EXTENDED)
+    for (const { obj, el } of hits) {
+      try {
+        if (
+          obj.Aa &&
+          typeof obj.Aa.next === "function" &&
+          (obj.Ga || obj.ha || typeof obj.Ab !== "undefined")
+        ) {
+          const cur = obj.Aa.value;
+          if (cur === TARGET) {
+            logInfo("Aa already EXTENDED", { el: describeEl(el) });
+            state.ngInvokeSucceeded = true;
+            return true;
+          }
+          attempts.push("Aa.next");
+          obj.Aa.next(TARGET);
+          logInfo("invoked Aa.next(EXTENDED)", {
+            el: describeEl(el),
+            prev: cur,
+          });
+          // Also try setValue path if present
+          try {
+            if (obj.Ga && obj.Ga.ha && obj.Ga.ha.ha && obj.Ga.ha.ha.setValue) {
+              obj.Ga.ha.ha.setValue(265, 2);
+            } else if (obj.ha && obj.ha.ha && obj.ha.ha.setValue) {
+              obj.ha.ha.setValue(265, 2);
+            }
+          } catch (_) {
+            /* ignore */
+          }
+          state.ngInvokeSucceeded = true;
+          return true;
+        }
+      } catch (err) {
+        logWarn("Aa.next invoke failed", String(err));
+      }
+    }
+
+    logWarn("no Angular thinking controller invoked", { attempts });
+    return false;
   }
+
+  // ---------------------------------------------------------------------------
+  // Menu open / enable flow
+  // ---------------------------------------------------------------------------
 
   async function ensureMenuOpen() {
-    // Already open if we can see toggle or options
-    if (findBestToggle({ silent: true }) || findExtendedOption()) {
-      logInfo("menu already shows thinking UI");
+    if (isExtendedActiveInUi()) {
+      logInfo("UI already shows extended on model chip");
       return true;
+    }
+
+    if (hasThinkingUi()) {
+      logInfo("thinking UI already visible");
+      return true;
+    }
+
+    if (isModelMenuOpen()) {
+      logInfo("model menu open; waiting for thinking UI");
+      for (let i = 0; i < 25; i++) {
+        await sleep(100);
+        if (hasThinkingUi()) return true;
+        if (isExtendedActiveInUi()) return true;
+        // Nested thinking nav
+        if (i === 8) {
+          const nav = queryDeep('[data-test-id="thinking-level-nav-button"]');
+          if (nav && isVisible(nav)) {
+            logInfo("click thinking-level-nav-button (menu already open)");
+            nativeClick(nav);
+          }
+        }
+      }
+      // Do NOT re-click menu button while open
+      logWarn("menu open but thinking UI still missing");
+      return hasThinkingUi();
     }
 
     const btn = findMenuButton();
@@ -604,177 +792,239 @@
       return false;
     }
 
-    logInfo("opening model menu", { button: btn, text: textOf(btn) });
+    logInfo("opening model menu", {
+      button: describeEl(btn),
+      text: textOf(btn),
+    });
     state.menuOpenCount += 1;
-    dispatchPointerSequence(btn);
+    nativeClick(btn);
 
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 40; i++) {
       await sleep(100);
-      if (findBestToggle({ silent: true }) || findExtendedOption()) {
+      if (isExtendedActiveInUi()) return true;
+      if (hasThinkingUi()) {
         logInfo("thinking UI visible after open", { waitMs: (i + 1) * 100 });
         return true;
       }
-      // nested nav into thinking levels
-      const nav = queryDeep('[data-test-id="thinking-level-nav-button"]');
-      if (nav && isVisible(nav) && i === 5) {
-        logInfo("clicking thinking-level-nav-button");
-        dispatchPointerSequence(nav);
+      if (i === 10) {
+        const nav = queryDeep('[data-test-id="thinking-level-nav-button"]');
+        if (nav && isVisible(nav)) {
+          logInfo("click thinking-level-nav-button");
+          nativeClick(nav);
+        }
+      }
+      // If menu closed unexpectedly, reopen once
+      if (i === 20 && !isModelMenuOpen()) {
+        logInfo("menu closed unexpectedly; reopening once");
+        state.menuOpenCount += 1;
+        nativeClick(btn);
       }
     }
 
-    logWarn("thinking UI not found after opening menu");
+    logWarn("thinking UI not found after opening menu", {
+      menuOpen: isModelMenuOpen(),
+      chip: textOf(findMenuButton()),
+    });
     state.lastDomDetail = "thinking-ui-missing-after-open";
     return false;
   }
 
-  function closeMenu() {
-    try {
-      document.activeElement &&
-        document.activeElement instanceof HTMLElement &&
-        document.activeElement.blur();
-    } catch (_) {
-      /* ignore */
-    }
+  function closeMenuSoft() {
+    // Only Escape — do not click the model chip (that toggles)
     document.dispatchEvent(
       new KeyboardEvent("keydown", {
         key: "Escape",
         code: "Escape",
         keyCode: 27,
-        which: 27,
-        bubbles: true,
-      })
-    );
-    document.dispatchEvent(
-      new KeyboardEvent("keyup", {
-        key: "Escape",
-        code: "Escape",
-        keyCode: 27,
-        which: 27,
         bubbles: true,
       })
     );
   }
 
-  async function enableViaDom() {
+  async function waitForExtended(msTotal) {
+    const steps = Math.max(1, Math.floor(msTotal / 100));
+    for (let i = 0; i < steps; i++) {
+      if (isExtendedActiveInUi()) return true;
+      await sleep(100);
+    }
+    return isExtendedActiveInUi();
+  }
+
+  async function enableViaDomAndNg() {
     if (state.userDisabledThisSession) {
-      logInfo("skip DOM: user disabled this session");
+      logInfo("skip: user disabled this session");
       return false;
     }
 
     state.domEnableAttempted = true;
-    const opened = await ensureMenuOpen();
-    if (!opened) {
-      logWarn("could not open / locate model menu thinking UI");
-      return false;
+
+    if (isExtendedActiveInUi()) {
+      logInfo("already extended (chip text)");
+      state.domEnableSucceeded = true;
+      state.lastDomDetail = "chip-already-extended";
+      return true;
     }
 
-    await sleep(200);
-
-    // Strategy A: mat-slide-toggle
-    let best = findBestToggle();
-    if (best) {
-      if (isControlOn(best.button, best.host)) {
-        logInfo("slide toggle already ON");
+    // Strategy 0: Angular invoke WITHOUT opening menu (state may already be ready)
+    if (!state.ngInvokeSucceeded) {
+      const ngOk = tryInvokeAngularThinkingExtended();
+      if (ngOk && (await waitForExtended(800))) {
         state.domEnableSucceeded = true;
-        state.lastDomDetail = "toggle-already-on";
-        closeMenu();
+        state.lastDomDetail = "ng-invoke-before-menu";
+        logInfo("extended via Angular before menu");
         return true;
       }
-
-      logInfo("turning ON slide toggle");
-      state.toggleClickCount += 1;
-      forceToggleOn(best.host, best.button);
-
-      for (let i = 0; i < 15; i++) {
-        await sleep(100);
-        best = findBestToggle({ silent: true }) || best;
-        if (best && isControlOn(best.button, best.host)) {
-          logInfo("slide toggle is ON after click", { waitMs: (i + 1) * 100 });
-          state.domEnableSucceeded = true;
-          state.lastDomDetail = "toggle-clicked-on";
-          await sleep(150);
-          closeMenu();
-          return true;
-        }
-      }
-      logWarn("slide toggle still OFF after click");
-    } else {
-      logWarn("no mat-slide-toggle candidate found");
     }
 
-    // Strategy B: click 強化版思考モード option row
-    const opt = findExtendedOption();
+    const opened = await ensureMenuOpen();
+    if (!opened && !hasThinkingUi()) {
+      // Still try ng with menu DOM present partially
+      logWarn("menu/thinking UI not confirmed; trying ng + retry open");
+    }
+
+    // Strategy 1: Angular invoke with menu open (components exist)
+    {
+      const ngOk = tryInvokeAngularThinkingExtended();
+      if (ngOk && (await waitForExtended(1000))) {
+        state.domEnableSucceeded = true;
+        state.lastDomDetail = "ng-invoke-with-menu";
+        logInfo("extended via Angular with menu");
+        closeMenuSoft();
+        return true;
+      }
+      if (isExtendedActiveInUi()) {
+        state.domEnableSucceeded = true;
+        state.lastDomDetail = "ng-invoke-chip";
+        closeMenuSoft();
+        return true;
+      }
+    }
+
+    // Strategy 2: mat-slide-toggle if present
+    const toggle = findSlideToggle();
+    if (toggle) {
+      logInfo("found slide toggle", { on: toggle.on, host: describeEl(toggle.host) });
+      if (!toggle.on) {
+        state.toggleClickCount += 1;
+        nativeClick(toggle.button);
+        if (await waitForExtended(1000)) {
+          state.domEnableSucceeded = true;
+          state.lastDomDetail = "slide-toggle-click";
+          closeMenuSoft();
+          return true;
+        }
+      } else {
+        state.domEnableSucceeded = true;
+        state.lastDomDetail = "slide-toggle-already-on";
+        closeMenuSoft();
+        return true;
+      }
+    } else {
+      logInfo("no mat-slide-toggle (expected on current UI)");
+    }
+
+    // Strategy 3: click option row (single native click)
+    const opt = findExtendedOptionTarget();
     if (opt) {
-      if (opt.selected) {
-        logInfo("extended option already selected", { text: opt.text });
+      logInfo("extended option target", {
+        text: opt.text,
+        why: opt.why,
+        score: opt.score,
+        selected: opt.selected,
+        target: describeEl(opt.target),
+        candidates: opt.candidates,
+      });
+
+      if (opt.selected && isExtendedActiveInUi()) {
         state.domEnableSucceeded = true;
         state.lastDomDetail = "option-already-selected";
-        closeMenu();
+        closeMenuSoft();
         return true;
       }
-      logInfo("clicking extended thinking option", { text: opt.text });
-      state.toggleClickCount += 1;
-      dispatchPointerSequence(opt.el);
-      await sleep(300);
-      const opt2 = findExtendedOption();
-      if (opt2 && opt2.selected) {
-        logInfo("extended option selected after click");
-        state.domEnableSucceeded = true;
-        state.lastDomDetail = "option-clicked";
-        closeMenu();
-        return true;
-      }
-      // Even without selected class, selection may have applied
-      best = findBestToggle({ silent: true });
-      if (best && isControlOn(best.button, best.host)) {
-        state.domEnableSucceeded = true;
-        state.lastDomDetail = "option-click-toggle-on";
-        closeMenu();
-        return true;
-      }
-      logWarn("option click did not show selected state", {
-        text: opt.text,
-        after: opt2,
-      });
-    } else {
-      logWarn("no extended thinking option row found");
-    }
 
-    // Strategy C: click any visible control matching label + switch
-    const labelHits = queryAllDeep("span, div, label").filter((el) => {
-      const t = textOf(el);
-      return matchesLabel(t) && t.length <= 30 && isVisible(el);
-    });
-    logInfo("label hits", {
-      count: labelHits.length,
-      samples: labelHits.slice(0, 5).map((el) => textOf(el)),
-    });
-    for (const label of labelHits.slice(0, 5)) {
-      const root = label.parentElement;
-      if (!root) continue;
-      const sw = root.querySelector(
-        'button[role="switch"], mat-slide-toggle, input[type="checkbox"]'
-      );
-      if (sw) {
-        logInfo("clicking switch near label", { label: textOf(label) });
-        dispatchPointerSequence(sw);
-        await sleep(250);
-        if (isControlOn(sw, sw.closest("mat-slide-toggle"))) {
+      // If option looks selected but chip doesn't, still re-click to force apply
+      state.toggleClickCount += 1;
+      const chipBefore = textOf(findMenuButton());
+      nativeClick(opt.target);
+      logInfo("clicked extended option (native)", {
+        chipBefore,
+        target: describeEl(opt.target),
+      });
+
+      // Menu often closes on success → option becomes null; trust chip text
+      if (await waitForExtended(1500)) {
+        state.domEnableSucceeded = true;
+        state.lastDomDetail = "option-click-chip-extended";
+        logInfo("success: chip shows extended after option click", {
+          chip: textOf(findMenuButton()),
+        });
+        return true;
+      }
+
+      // Retry click parent/child
+      const parentBtn =
+        opt.target.parentElement &&
+        opt.target.parentElement.closest("button, [role='menuitem']");
+      if (parentBtn && parentBtn !== opt.target) {
+        logInfo("retry click parent", describeEl(parentBtn));
+        nativeClick(parentBtn);
+        if (await waitForExtended(1000)) {
           state.domEnableSucceeded = true;
-          state.lastDomDetail = "label-near-switch";
-          closeMenu();
+          state.lastDomDetail = "option-parent-click";
           return true;
         }
       }
-      // Click label itself
-      dispatchPointerSequence(label);
+
+      // Keyboard activate
+      try {
+        opt.target.focus();
+        opt.target.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            bubbles: true,
+          })
+        );
+        opt.target.dispatchEvent(
+          new KeyboardEvent("keyup", {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            bubbles: true,
+          })
+        );
+      } catch (_) {
+        /* ignore */
+      }
+      if (await waitForExtended(800)) {
+        state.domEnableSucceeded = true;
+        state.lastDomDetail = "option-enter-key";
+        return true;
+      }
+
+      logWarn("option click did not produce 拡張 on chip", {
+        chipAfter: textOf(findMenuButton()),
+        menuOpen: isModelMenuOpen(),
+      });
+    } else {
+      logWarn("extended option target not found", {
+        menuOpen: isModelMenuOpen(),
+        thinkingUi: hasThinkingUi(),
+      });
+    }
+
+    // Strategy 4: re-invoke Angular after DOM interactions
+    if (tryInvokeAngularThinkingExtended() && (await waitForExtended(1000))) {
+      state.domEnableSucceeded = true;
+      state.lastDomDetail = "ng-invoke-after-dom";
+      return true;
     }
 
     state.lastDomDetail = "all-strategies-failed";
     state.domEnableSucceeded = false;
-    // Leave menu open briefly for debugging if still failing? User may find it annoying.
-    // Close to avoid stuck open menu.
-    closeMenu();
+    // Leave menu as-is if open so user can see; soft-close only if open long
+    if (isModelMenuOpen()) closeMenuSoft();
     return false;
   }
 
@@ -788,21 +1038,34 @@
 
   function scheduleEnable(reason) {
     if (state.userDisabledThisSession) return;
-    if (state.domEnableSucceeded) return;
+    if (state.domEnableSucceeded && isExtendedActiveInUi()) return;
     if (enableTimer) clearTimeout(enableTimer);
-    enableTimer = setTimeout(() => {
-      runEnable(reason);
-    }, 350);
+    enableTimer = setTimeout(() => runEnable(reason), 300);
   }
 
   async function runEnable(reason) {
     if (enableInFlight) return;
     if (state.userDisabledThisSession) return;
-    if (state.domEnableSucceeded) return;
+
+    // Already good
+    if (isExtendedActiveInUi()) {
+      state.domEnableSucceeded = true;
+      if (reason !== "poll") {
+        logInfo("chip already extended; marking success", {
+          chip: textOf(findMenuButton()),
+        });
+      }
+      return;
+    }
+
+    // If we previously thought success but chip no longer shows 拡張, retry
+    if (state.domEnableSucceeded && !isExtendedActiveInUi()) {
+      logWarn("lost extended state; will retry");
+      state.domEnableSucceeded = false;
+    }
 
     const now = Date.now();
-    // throttle repeated failures a bit, but allow retries
-    if (now - state.lastEnableAt < 1500 && attemptCount > 0) return;
+    if (now - state.lastEnableAt < 1200 && attemptCount > 0) return;
     state.lastEnableAt = now;
     state.lastReason = reason;
     enableInFlight = true;
@@ -815,6 +1078,7 @@
         hasAt: !!state.atToken,
         hasBl: !!state.bl,
         hasSid: !!state.fSid,
+        chip: textOf(findMenuButton()),
       });
 
       if (state.atToken) {
@@ -822,12 +1086,10 @@
           state.prefWriteAttempted = true;
           await writeThinkingPreference(THINKING_LEVEL_EXTENDED);
         }
-      } else {
-        logWarn("no at token yet; DOM path only");
       }
 
       if (!state.domEnableSucceeded) {
-        await enableViaDom();
+        await enableViaDomAndNg();
       }
 
       emitToExtension("state", getPublicState());
@@ -842,16 +1104,20 @@
   function watchDom() {
     let scheduled = false;
     const observer = new MutationObserver(() => {
-      if (state.domEnableSucceeded || state.userDisabledThisSession) return;
+      if (state.userDisabledThisSession) return;
+      if (isExtendedActiveInUi()) {
+        state.domEnableSucceeded = true;
+        return;
+      }
+      if (state.domEnableSucceeded) return;
       if (scheduled) return;
       scheduled = true;
       setTimeout(() => {
         scheduled = false;
-        // Only act if thinking UI is present (menu open)
-        if (findBestToggle({ silent: true }) || findExtendedOption()) {
-          scheduleEnable("mutation-thinking-ui");
+        if (hasThinkingUi() || isModelMenuOpen()) {
+          scheduleEnable("mutation-menu");
         }
-      }, 300);
+      }, 250);
     });
 
     const start = () => {
@@ -866,53 +1132,52 @@
     else document.addEventListener("DOMContentLoaded", start, { once: true });
   }
 
-  function watchToggleManualOff() {
+  function watchManualOff() {
+    // If chip loses 拡張 after we enabled, and user interacted with menu, respect off
     document.addEventListener(
       "click",
       (ev) => {
         const t = ev.target;
         if (!(t instanceof Element)) return;
-        const toggleRoot = t.closest(
-          'mat-slide-toggle, .mat-mdc-slide-toggle, [data-test-id="thinking-level-toggle"], [data-test-id="thinking-level-option"]'
+        const inModeUi = t.closest(
+          '[data-test-id="bard-mode-menu-button"], [data-test-id*="thinking"], [data-test-id*="bard-mode"], mat-slide-toggle'
         );
-        if (!toggleRoot) return;
+        if (!inModeUi) return;
         setTimeout(() => {
           if (!state.domEnableSucceeded) return;
-          const best = findBestToggle({ silent: true });
-          const on = best && isControlOn(best.button, best.host);
-          const opt = findExtendedOption();
-          const selected = opt && opt.selected;
-          if (!on && !selected) {
+          if (!isExtendedActiveInUi()) {
+            // Distinguish our failed run vs user off: only if we had success and chip lost 拡張 after user click
             state.userDisabledThisSession = true;
             state.domEnableSucceeded = false;
-            logInfo("user disabled thinking mode; no re-enable this session");
+            logInfo("user appears to have disabled extended; stop re-enable");
             emitToExtension("state", getPublicState());
           }
-        }, 350);
+        }, 400);
       },
       true
     );
   }
 
   function watchSpaNavigation() {
-    const resetForNavigation = () => {
+    const reset = () => {
       if (state.userDisabledThisSession) return;
       state.domEnableSucceeded = false;
       state.prefWriteAttempted = false;
+      state.ngInvokeSucceeded = false;
       attemptCount = 0;
       scheduleEnable("navigation");
     };
-    const wrapHistory = (fnName) => {
-      const orig = history[fnName];
-      history[fnName] = function () {
+    const wrap = (name) => {
+      const orig = history[name];
+      history[name] = function () {
         const ret = orig.apply(this, arguments);
-        resetForNavigation();
+        reset();
         return ret;
       };
     };
-    wrapHistory("pushState");
-    wrapHistory("replaceState");
-    window.addEventListener("popstate", resetForNavigation);
+    wrap("pushState");
+    wrap("replaceState");
+    window.addEventListener("popstate", reset);
   }
 
   function listenExtensionMessages() {
@@ -921,15 +1186,14 @@
       const data = event.data;
       if (!data || data.source !== SOURCE + "-bridge") return;
       if (data.type === "getLogs") {
-        emitToExtension("logs", {
-          logs,
-          state: getPublicState(),
-        });
+        emitToExtension("logs", { logs, state: getPublicState() });
       } else if (data.type === "getState") {
         emitToExtension("state", getPublicState());
       } else if (data.type === "enableNow") {
         state.domEnableSucceeded = false;
         state.userDisabledThisSession = false;
+        state.ngInvokeSucceeded = false;
+        attemptCount = 0;
         runEnable("popup");
       } else if (data.type === "clearLogs") {
         logs.length = 0;
@@ -940,15 +1204,27 @@
   }
 
   function boot() {
-    logInfo("boot", { href: location.href, ua: navigator.userAgent });
+    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.2.0" });
     patchFetch();
     patchXHR();
     watchDom();
-    watchToggleManualOff();
+    watchManualOff();
     watchSpaNavigation();
     listenExtensionMessages();
 
-    const delays = [800, 1800, 3500, 6000, 10000, 15000];
+    // Poll chip text — cheap success path if something else enables it
+    setInterval(() => {
+      if (state.userDisabledThisSession) return;
+      if (isExtendedActiveInUi()) {
+        if (!state.domEnableSucceeded) {
+          state.domEnableSucceeded = true;
+          logInfo("poll: chip shows extended");
+          emitToExtension("state", getPublicState());
+        }
+      }
+    }, 2000);
+
+    const delays = [600, 1500, 3000, 5000, 8000, 12000, 18000];
     for (const d of delays) {
       setTimeout(() => scheduleEnable("timer-" + d), d);
     }
@@ -959,11 +1235,15 @@
       enable: () => {
         state.domEnableSucceeded = false;
         state.userDisabledThisSession = false;
+        state.ngInvokeSucceeded = false;
+        attemptCount = 0;
         return runEnable("manual");
       },
       writePref: () => writeThinkingPreference(THINKING_LEVEL_EXTENDED),
       getState: getPublicState,
       dump: () => ({ state: getPublicState(), logs: logs.slice() }),
+      isExtended: isExtendedActiveInUi,
+      tryNg: tryInvokeAngularThinkingExtended,
     };
 
     emitToExtension("ready", getPublicState());

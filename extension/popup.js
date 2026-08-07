@@ -4,6 +4,7 @@
   const el = {
     conn: document.getElementById("conn"),
     domOk: document.getElementById("domOk"),
+    chip: document.getElementById("chip"),
     prefOk: document.getElementById("prefOk"),
     logCount: document.getElementById("logCount"),
     detail: document.getElementById("detail"),
@@ -40,9 +41,12 @@
       setBadge(el.conn, "接続OK", "ok");
     }
 
-    if (st.domEnableSucceeded) setBadge(el.domOk, "成功", "ok");
+    if (st.domEnableSucceeded || st.uiLooksExtended)
+      setBadge(el.domOk, "成功", "ok");
     else if (st.domEnableAttempted) setBadge(el.domOk, "未成功 / 再試行中", "warn");
     else setBadge(el.domOk, "未実行", "");
+
+    el.chip.textContent = st.menuButtonText || (st.uiLooksExtended ? "拡張" : "—");
 
     if (st.prefWriteSucceeded) setBadge(el.prefOk, "成功", "ok");
     else if (st.prefWriteAttempted) setBadge(el.prefOk, "失敗 / トークン待ち", "warn");
