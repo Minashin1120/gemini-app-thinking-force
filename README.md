@@ -1,62 +1,111 @@
 # Gemini 強化版思考モード Auto-On
 
-[gemini.google.com](https://gemini.google.com/) にアクセスしたとき、モデルピッカー内の **強化版思考モード**（`THINKING_LEVEL_EXTENDED`）を自動的にオンにする Chrome 拡張機能です。
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green.svg)](extension/manifest.json)
+
+[gemini.google.com](https://gemini.google.com/) を開いたとき、モデルピッカー内の **強化版思考モード**（`THINKING_LEVEL_EXTENDED`）を自動でオンにする Chrome 拡張機能です。
+
+> **非公式**の個人向けツールです。Google / Gemini とは無関係です。利用は自己責任でお願いします。
+
+## 機能
+
+- ページ読み込み時に強化版思考モードを自動有効化
+- 設定の永続化（Gemini 内部 RPC `L5adhe` で preference を書き込み）
+- UI 同期（モデルチップに「拡張」が付くまで有効化を試行）
+- 既に強化版になっている場合は余計な操作をしない
+- 同一タブ内でユーザーがオフにした場合は、そのセッションでは再有効化しない
+- 拡張アイコンのポップアップから状態確認・ログの JSON ダウンロード
 
 ## インストール（開発者モード）
 
-1. Chrome で `chrome://extensions` を開く
-2. 右上の **デベロッパーモード** を有効化
-3. **パッケージ化されていない拡張機能を読み込む**
-4. このリポジトリの `extension/` フォルダを選択
+Chrome ウェブストアには未公開です。ローカルから読み込んで使います。
 
-## 動作概要
+1. このリポジトリを clone する
 
-1. **設定の永続化**  
-   Gemini 内部 RPC `L5adhe` でユーザー設定  
-   `last_selected_thinking_level_on_web = 2`（強化版）を書き込みます。
+   ```bash
+   git clone https://github.com/Minashin1120/gemini-app-thinking-force.git
+   ```
 
-2. **UI 同期**  
-   モデルピッカーを開き、`mat-slide-toggle` 内の `button[role=switch]`  
-   （強化版思考のスライド）をオンにします。  
-   ※ `data-test-id="thinking-level-toggle"` はヘッダー側であることが多く、  
-   本体トグルではないため直接は押しません。
+2. Chrome で `chrome://extensions` を開く
+3. 右上の **デベロッパーモード** をオンにする
+4. **パッケージ化されていない拡張機能を読み込む** をクリック
+5. リポジトリ内の **`extension/`** フォルダを選択する
+6. [gemini.google.com](https://gemini.google.com/) を開き、モデルチップが `〜拡張`（例: `Flash-Lite拡張`）になるか確認する
 
-3. **手動オフの尊重**  
-   同一タブセッション中にユーザーがトグルをオフにした場合は、  
-   そのセッションでは再有効化しません（次のアクセス／リロードで再度オンを試みます）。
+更新後は `chrome://extensions` で拡張を再読み込みし、Gemini をハードリロード（Ctrl+Shift+R）してください。
 
-## ポップアップ（拡張アイコン）
+## 使い方
 
-ツールバーの拡張アイコンをクリックするとモーダル（ポップアップ）が開き、
+普段どおり Gemini を使うだけで動作します。
 
-- 接続状態 / DOM 有効化 / 設定書き込みの成否
-- 直近ログの表示
-- **ログの JSON ダウンロード**
-- 今すぐ有効化 / ログクリア
+| 操作 | 説明 |
+|------|------|
+| 自動オン | アクセス時に強化版思考を有効化を試行 |
+| 拡張アイコン | 接続状態・チップ表示・設定書き込み結果・ログを表示 |
+| ログ DL | ポップアップから JSON をダウンロード（不具合調査用） |
+| 今すぐ有効化 | ポップアップから手動で再試行 |
 
-が使えます。ログ取得には **gemini.google.com のタブが開いていること** が必要です。
+ログ取得には **gemini.google.com のタブが開いていること** が必要です。
 
-## デバッグ
+### 開発者向けコンソール API
 
 Gemini のページコンソールで:
 
 ```js
-window.__geminiThinkingAuto.state
-window.__geminiThinkingAuto.enable()
-window.__geminiThinkingAuto.dump()
+window.__geminiThinkingAuto.state      // 現在の状態
+window.__geminiThinkingAuto.isExtended() // 強化版かどうか
+window.__geminiThinkingAuto.enable()     // 有効化を再試行
+window.__geminiThinkingAuto.dump()       // ログ付きで状態を出力
+window.__geminiThinkingAuto.tryNg()      // Angular 経由の有効化を試行
 ```
+
+## 動作の仕組み（概要）
+
+1. **設定の永続化**  
+   RPC `L5adhe` で `last_selected_thinking_level_on_web = 2`（強化版）を書き込みます。
+
+2. **UI 同期**  
+   モデルピッカーを開き、Angular コンテキスト経由または DOM 操作で強化版オプションを選択します。  
+   成功判定はモデルチップ文言に **「拡張」** が含まれることです。
+
+3. **手動オフの尊重**  
+   同一タブセッション中にユーザーがオフにした場合、そのセッションでは再オンしません（リロード後に再度試行）。
+
+技術調査の詳細は [`docs/har-findings.md`](docs/har-findings.md) を参照してください。
 
 ## リポジトリ構成
 
-| パス | 内容 |
-|------|------|
-| `extension/` | Chrome 拡張（Manifest V3） |
-| `AGENTS.md` | AI エージェント向け運用ルール |
-| `docs/` | 技術調査メモ（追跡対象） |
-| `.handoff/` | 引き継ぎ資料（**git 追跡外**） |
-| `gemini.google.com.har` | 調査用 HAR（**git 追跡外**、ローカル保持） |
+```text
+.
+├── extension/          # Chrome 拡張本体（Manifest V3）← 読み込むフォルダ
+│   ├── manifest.json
+│   ├── page-hook.js    # MAIN world: fetch フック + UI 操作
+│   ├── content.js      # isolated world: ポップアップとの橋渡し
+│   ├── popup.*         # 拡張アイコンの UI
+│   └── icons/
+├── docs/               # HAR 調査メモなど
+├── tools/              # 調査用スクリプト
+├── AGENTS.md           # 開発・運用メモ（AI エージェント向け含む）
+└── README.md
+```
 
-## 注意
+## 注意・制限
 
-- Gemini の UI / 内部 RPC は変更されやすいです。動作しなくなった場合は HAR を取り直して `docs/har-findings.md` と実装を更新してください。
-- 非公式の自動化です。利用は自己責任でお願いします。
+- Gemini の UI や内部 RPC は変更されやすいです。動かなくなった場合は再調査が必要です
+- Cookie / トークン / 個人チャットを含む HAR は **リポジトリに含めない** でください
+- 本拡張は Gemini の利用規約の解釈によっては問題になる可能性があります。自己責任でご利用ください
+- 公式サポートはありません
+
+## プライバシー
+
+- 外部サーバーへの通信は行いません（操作対象は `gemini.google.com` のみ）
+- アカウント情報やチャット内容を収集・送信しません
+- ポップアップのログはブラウザ内に一時保持され、ユーザーが明示的にダウンロードしたときだけファイルになります
+
+## ライセンス
+
+[MIT License](LICENSE)
+
+## 免責
+
+本ソフトウェアは「現状有姿（AS IS）」で提供されます。Google / Gemini の仕様変更、アカウント制限、データ損失など、利用に伴う一切の損害について作者は責任を負いません。
