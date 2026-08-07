@@ -25,3 +25,8 @@ Desktop.ini
 
 # Logs
 *.log
+
+# Local archives
+*.7z
+*.zip
+
