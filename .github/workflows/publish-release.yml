@@ -1,0 +1,69 @@
+name: Publish GitHub Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to publish as a Release
+        required: true
+        default: v1.3.0
+      title:
+        description: Release title
+        required: true
+        default: v1.3.0
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          TITLE="${{ inputs.title }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+            gh release view "$TAG" --json url -q .url
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --verify-tag \
+            --notes "$(cat <<'EOF'
+## Gemini 強化版思考モード Auto-On v1.3.0
+
+gemini.google.com アクセス時に **強化版思考モード** を自動でオンにする Chrome 拡張機能の初回公開リリースです。
+
+### 機能
+- ページ読み込み時に強化版思考を自動有効化
+- 設定の永続化（内部 RPC `L5adhe` / level `2`）
+- UI 同期と成功判定（モデルチップの「拡張」）
+- 既に強化版のときは余計なメニュー操作をしない
+- ポップアップから状態確認・ログ JSON ダウンロード
+
+### インストール
+1. このリポジトリを clone
+2. Chrome の `chrome://extensions` でデベロッパーモードをオン
+3. **パッケージ化されていない拡張機能を読み込む** で `extension/` を選択
+
+詳細は [README](https://github.com/Minashin1120/gemini-app-thinking-force/blob/master/README.md) を参照してください。
+
+### 注意
+- 非公式ツールです。Google / Gemini とは無関係です
+- 利用は自己責任でお願いします
+- Gemini の UI / 内部仕様変更で動作しなくなることがあります
+EOF
+)"
+          echo "Created release:"
+          gh release view "$TAG" --json url -q .url
