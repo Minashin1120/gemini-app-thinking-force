@@ -30,6 +30,13 @@
   const ENABLE_THROTTLE_LATE_MS = 700;
   const POLL_STEP_MS = 50;
 
+  /**
+   * While the user is composing (IME) / actively typing in the prompt, delay
+   * the UI enable so we never steal IME keystrokes or break composition.
+   */
+  const INPUT_IDLE_MS = 400;
+  const MAX_INPUT_WAIT_MS = 10000;
+
   const LABEL_PATTERNS = [
     /強化版思考モード/,
     /強化版思考/,
@@ -57,6 +64,16 @@
     toggleClickCount: 0,
     /** True only when THIS extension opened the model menu (not the user). */
     menuOpenedByUs: false,
+    /** IME composition currently active (compositionstart/end). */
+    composing: false,
+    /** Whether focus is inside the prompt composer. */
+    promptActive: false,
+    /** When focus last entered the prompt composer (ms epoch). */
+    promptFocusAt: 0,
+    /** When the user last typed in the prompt (ms epoch). */
+    promptIdleAt: 0,
+    /** Whether the last enable ran while the user was in the prompt (restore focus). */
+    promptWasActive: false,
     bootAt: Date.now(),
   };
 
@@ -588,6 +605,165 @@
     state.domEnableSucceeded = true;
     state.lastDomDetail = detail;
     clearSpuriousFocus();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Prompt input protection (IME / typing) — never steal the user's keystrokes
+  // ---------------------------------------------------------------------------
+
+  let promptInputCache = null;
+  let promptInputCacheAt = 0;
+
+  /**
+   * Find the prompt composer (textarea / rich-textarea / contenteditable).
+   * Cached briefly because it is consulted on every keydown while typing.
+   */
+  function findPromptInput() {
+    if (
+      promptInputCache &&
+      promptInputCache.isConnected &&
+      Date.now() - promptInputCacheAt < 1000 &&
+      isVisible(promptInputCache)
+    ) {
+      return promptInputCache;
+    }
+    const selectors = [
+      '[data-test-id="prompt-textarea"]',
+      '[data-test-id="prompt-input"]',
+      '[data-test-id="chat-input"]',
+      "rich-textarea",
+      ".rich-textarea",
+      ".input-area textarea",
+      "textarea",
+    ];
+    let el = null;
+    for (const sel of selectors) {
+      el = queryDeep(sel);
+      if (el && isVisible(el)) break;
+    }
+    promptInputCache = el;
+    promptInputCacheAt = Date.now();
+    return el;
+  }
+
+  function isPromptElement(el) {
+    if (!(el instanceof Element)) return false;
+    const prompt = findPromptInput();
+    if (prompt) {
+      if (el === prompt || prompt.contains(el)) return true;
+    }
+    return !!el.closest?.(
+      '[data-test-id*="prompt"], [data-test-id*="chat-input"], rich-textarea, .rich-textarea, .input-area'
+    );
+  }
+
+  function installPromptInputWatchers() {
+    const refresh = () => {
+      const ae = document.activeElement;
+      const inPrompt = ae instanceof Element && isPromptElement(ae);
+      state.promptActive = inPrompt;
+      if (inPrompt && !state.promptFocusAt) state.promptFocusAt = Date.now();
+    };
+
+    document.addEventListener("focusin", refresh, true);
+    document.addEventListener(
+      "compositionstart",
+      () => {
+        state.composing = true;
+      },
+      true
+    );
+    document.addEventListener(
+      "compositionend",
+      () => {
+        state.composing = false;
+      },
+      true
+    );
+    const markTyping = () => {
+      const ae = document.activeElement;
+      if (!(ae instanceof Element)) return;
+      if (state.promptActive || isPromptElement(ae)) {
+        state.promptActive = true;
+        state.promptIdleAt = Date.now();
+      }
+    };
+    document.addEventListener("keydown", markTyping, true);
+    document.addEventListener("input", markTyping, true);
+  }
+
+  /** True while the user is composing / actively typing in the prompt. */
+  function userPromptActive() {
+    if (state.composing) return true;
+    return !!(
+      state.promptIdleAt &&
+      Date.now() - state.promptIdleAt < INPUT_IDLE_MS
+    );
+  }
+
+  /** Resolve true once input is quiet; false if it stays busy for maxMs. */
+  async function waitForInputQuiet(maxMs) {
+    const deadline = Date.now() + maxMs;
+    while (Date.now() < deadline) {
+      if (!userPromptActive()) return true;
+      await sleep(100);
+    }
+    return false;
+  }
+
+  function focusableIn(el) {
+    if (!el) return null;
+    if (el.matches?.('[contenteditable="true"], textarea, input')) return el;
+    const inner = el.querySelector('[contenteditable="true"], textarea, input');
+    return inner || el;
+  }
+
+  /** Put the caret back into the prompt composer. Returns true on success. */
+  function restorePromptFocus() {
+    const prompt = findPromptInput();
+    const target = focusableIn(prompt);
+    if (!target) return false;
+    try {
+      target.focus({ preventScroll: false });
+    } catch (_) {
+      try {
+        target.focus();
+      } catch (_) {
+        return false;
+      }
+    }
+    if (target.isContentEditable) {
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        range.collapse(false);
+        const sel = window.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    logInfo("restored focus to prompt bar", {
+      tag: target.tagName,
+      testId: target.getAttribute("data-test-id"),
+    });
+    return true;
+  }
+
+  /** Restore focus once after the menu close / Angular settle (one-shot). */
+  function schedulePromptFocusRestore() {
+    if (!state.promptWasActive) return;
+    state.promptWasActive = false;
+    let attempts = 0;
+    const tryRestore = () => {
+      attempts += 1;
+      if (restorePromptFocus()) return;
+      if (attempts < 5) setTimeout(tryRestore, 200);
+    };
+    setTimeout(tryRestore, 120);
   }
 
   // ---------------------------------------------------------------------------
@@ -1181,6 +1357,21 @@
       }
 
       if (!state.domEnableSucceeded) {
+        // Never steal IME keystrokes / break composition while the user is
+        // typing in the prompt. Wait until the input settles (変換確定); if the
+        // user keeps typing, postpone this attempt — later triggers retry.
+        if (userPromptActive() || state.promptActive) {
+          state.promptWasActive = true;
+          logInfo("user typing/composing; waiting for prompt input to settle", {
+            composing: state.composing,
+            promptActive: state.promptActive,
+          });
+          const settled = await waitForInputQuiet(MAX_INPUT_WAIT_MS);
+          if (!settled) {
+            logWarn("prompt input stayed busy; deferring UI enable");
+            return;
+          }
+        }
         await enableViaDomAndNg();
       }
 
@@ -1191,6 +1382,11 @@
     } finally {
       enableInFlight = false;
       clearSpuriousFocus();
+      // Put the caret back into the prompt bar when the enable ran while the
+      // user was composing / had focused the prompt.
+      if (state.domEnableSucceeded || isExtendedActiveInUi()) {
+        schedulePromptFocusRestore();
+      }
       // Do not auto-reopen the menu here after a full attempt — that caused
       // multi-second thrashing. Early timers / mutation / poll re-arm when the
       // chip first mounts.
@@ -1309,12 +1505,13 @@
   }
 
   function boot() {
-    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.4.0" });
+    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.4.1" });
     patchFetch();
     patchXHR();
     watchDom();
     watchManualOff();
     watchSpaNavigation();
+    installPromptInputWatchers();
     listenExtensionMessages();
 
     // Poll chip text — cheap success path if something else enables it
