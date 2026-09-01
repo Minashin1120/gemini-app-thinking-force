@@ -14,7 +14,39 @@
     btnEnable: document.getElementById("btnEnable"),
     btnDownload: document.getElementById("btnDownload"),
     btnClear: document.getElementById("btnClear"),
+    consentView: document.getElementById("consentView"),
+    appView: document.getElementById("appView"),
+    consentNote: document.getElementById("consentNote"),
+    linkTerms: document.getElementById("linkTerms"),
+    linkPrivacy: document.getElementById("linkPrivacy"),
+    btnAgree: document.getElementById("btnAgree"),
+    btnReject: document.getElementById("btnReject"),
+    footerNote: document.getElementById("footerNote"),
   };
+
+  const CONSENT_KEY = "consent";
+
+  function getConsent() {
+    return chrome.storage.local.get(CONSENT_KEY).then((data) => !!data[CONSENT_KEY]);
+  }
+
+  function setConsent(value) {
+    if (value) {
+      return chrome.storage.local.set({
+        [CONSENT_KEY]: { acceptedAt: new Date().toISOString(), version: 1 },
+      });
+    }
+    return chrome.storage.local.remove(CONSENT_KEY);
+  }
+
+  function openExtensionPage(file) {
+    chrome.tabs.create({ url: chrome.runtime.getURL(file) });
+  }
+
+  function renderConsent(accepted) {
+    el.consentView.hidden = accepted;
+    el.appView.hidden = !accepted;
+  }
 
   /** @type {any} */
   let cache = { logs: [], state: null, href: null, ready: false };
@@ -162,5 +194,41 @@
     }
   });
 
-  refresh();
+  el.linkTerms.addEventListener("click", () => openExtensionPage("terms.html"));
+  el.linkPrivacy.addEventListener("click", () =>
+    openExtensionPage("privacy.html")
+  );
+  el.btnAgree.addEventListener("click", async () => {
+    try {
+      await setConsent(true);
+      renderConsent(true);
+      el.consentNote.textContent = "";
+      refresh();
+      // Re-arm any open Gemini tab: content script picks up storage change and
+      // the page-hook will start auto-enabling immediately.
+      setTimeout(() => {
+        sendToGemini({ type: "enableNow" }).catch(() => {});
+      }, 300);
+    } catch (err) {
+      el.consentNote.textContent = "保存に失敗しました: " + String(err);
+    }
+  });
+  el.btnReject.addEventListener("click", async () => {
+    try {
+      await setConsent(false);
+    } catch (_) {
+      /* ignore */
+    }
+    el.consentView.hidden = true;
+    el.footerNote.textContent =
+      "同意されなかったため、この拡張機能は動作しません。同意する場合は拡張機能のアイコンを再度クリックしてください。";
+  });
+
+  async function init() {
+    const accepted = await getConsent();
+    renderConsent(accepted);
+    if (accepted) refresh();
+  }
+
+  init();
 })();

@@ -152,6 +152,31 @@ footer {
   text-align: center;
 }
 
+.consent h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.consent p {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.consent-links,
+.consent-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.consent .note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--bad);
+}
+
 .ok {
   color: var(--ok);
 }

@@ -7,7 +7,32 @@
 
   const PAGE_SOURCE = "gemini-thinking-auto";
   const BRIDGE_SOURCE = "gemini-thinking-auto-bridge";
+  const CONSENT_KEY = "consent";
   const MAX_LOGS = 2000;
+
+  /**
+   * Tell the MAIN-world page-hook whether the user accepted the ToS / privacy
+   * policy. Auto-enable stays disabled until consent is granted.
+   */
+  function postConsent() {
+    chrome.storage.local.get(CONSENT_KEY).then(({ consent }) => {
+      window.postMessage(
+        {
+          source: BRIDGE_SOURCE,
+          type: "consentResult",
+          payload: { accepted: !!consent },
+        },
+        "*"
+      );
+    });
+  }
+
+  postConsent();
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && Object.prototype.hasOwnProperty.call(changes, CONSENT_KEY)) {
+      postConsent();
+    }
+  });
 
   /** @type {any[]} */
   let logs = [];

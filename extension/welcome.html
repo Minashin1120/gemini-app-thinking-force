@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ご利用にあたっての同意 | Thinking Mode Auto-On for Gemini App</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --card: #ffffff;
+    --text: #1f2328;
+    --muted: #57606a;
+    --accent: #1a73e8;
+    --ok: #188038;
+    --border: #d8dee4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.8;
+  }
+  .container {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+  }
+  header.hero {
+    background: linear-gradient(135deg, #1a73e8 0%, #0b57d0 100%);
+    color: #fff;
+    border-radius: 12px;
+    padding: 36px 32px;
+    margin-bottom: 28px;
+  }
+  header.hero h1 {
+    margin: 0 0 8px;
+    font-size: 24px;
+    line-height: 1.4;
+  }
+  header.hero p { margin: 0; opacity: 0.92; font-size: 14px; }
+  section.card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 22px 26px;
+    margin-bottom: 18px;
+  }
+  section.card h2 {
+    margin: 0 0 10px;
+    font-size: 18px;
+    color: var(--accent);
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--bg);
+  }
+  p, li { font-size: 14px; }
+  ul { padding-left: 20px; }
+  li { margin-bottom: 4px; }
+  .doc-frame {
+    width: 100%;
+    height: 420px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .doc-link {
+    display: inline-block;
+    margin: 6px 0 16px;
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .doc-link:hover { text-decoration: underline; }
+  .consent-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    text-align: center;
+    margin-bottom: 18px;
+  }
+  .consent-box p { font-size: 14px; color: var(--muted); margin: 0 0 16px; }
+  .consent-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  button {
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 12px 28px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.06); }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  button.ghost { background: transparent; }
+  #status { display: none; margin-top: 16px; font-size: 14px; }
+  #status.ok { color: var(--ok); }
+  #status.bad { color: #d93025; }
+  .muted { color: var(--muted); font-size: 12px; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 32px; }
+  @media (max-width: 560px) {
+    .container { padding: 16px 12px 60px; }
+    header.hero { padding: 24px 20px; }
+    header.hero h1 { font-size: 19px; }
+    section.card, .consent-box { padding: 16px 16px; }
+    .doc-frame { height: 360px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header class="hero">
+    <h1>ご利用にあたっての同意</h1>
+    <p>Thinking Mode Auto-On for Gemini App をインストールしていただきありがとうございます。</p>
+  </header>
+
+  <section class="card">
+    <h2>この拡張機能について</h2>
+    <p>この拡張機能は、<code>gemini.google.com</code> を開いたときにモデルピッカーの「強化版思考モード」を自動でオンにする<strong>非公式の個人向けツール</strong>です。Google LLC / Gemini とは一切関係ありません。</p>
+    <ul>
+      <li>動作対象は <code>gemini.google.com</code> のみ。個人情報の収集・外部サーバーへの送信は行いません。</li>
+      <li>利用は自己責任です。Google アカウントや Gemini の利用規約を遵守してください。</li>
+      <li>詳細は下記の「利用規約」「プライバシーポリシー」をご確認ください。</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>利用規約</h2>
+    <iframe class="doc-frame" src="terms.html" title="利用規約" loading="lazy"></iframe>
+    <a class="doc-link" href="terms.html" target="_blank" rel="noopener noreferrer">利用規約を新しいタブで開く</a>
+  </section>
+
+  <section class="card">
+    <h2>プライバシーポリシー</h2>
+    <iframe class="doc-frame" src="privacy.html" title="プライバシーポリシー" loading="lazy"></iframe>
+    <a class="doc-link" href="privacy.html" target="_blank" rel="noopener noreferrer">プライバシーポリシーを新しいタブで開く</a>
+  </section>
+
+  <div class="consent-box">
+    <p>上記の「利用規約」「プライバシーポリシー」をご確認のうえ、同意する場合のみ「同意して利用する」を押してください。同意しない場合は本拡張機能は動作しません。</p>
+    <div class="consent-buttons">
+      <button type="button" id="btnAccept" class="primary">同意して利用する</button>
+      <button type="button" id="btnDecline" class="ghost">同意しない</button>
+    </div>
+    <div id="status" role="status"></div>
+  </div>
+
+  <footer>
+    <p class="muted">&copy; 2026 Thinking Mode Auto-On for Gemini App. All rights reserved.</p>
+    <p class="muted">同意はこのブラウザにのみ保存され、外部に送信されません。</p>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var CONSENT_KEY = "consent";
+
+  var btnAccept = document.getElementById("btnAccept");
+  var btnDecline = document.getElementById("btnDecline");
+  var status = document.getElementById("status");
+
+  function showStatus(message, kind) {
+    status.textContent = message;
+    status.className = kind || "";
+    status.style.display = "block";
+  }
+
+  function disableButtons() {
+    btnAccept.disabled = true;
+    btnDecline.disabled = true;
+  }
+
+  function setConsent(value) {
+    if (value) {
+      return chrome.storage.local.set({
+        [CONSENT_KEY]: {
+          acceptedAt: new Date().toISOString(),
+          version: 1,
+        },
+      });
+    }
+    return chrome.storage.local.remove(CONSENT_KEY);
+  }
+
+  function closeSoon() {
+    setTimeout(function () {
+      try {
+        window.close();
+      } catch (_) {
+        /* ignore */
+      }
+    }, 2500);
+  }
+
+  chrome.storage.local.get(CONSENT_KEY).then(function (data) {
+    if (data[CONSENT_KEY]) {
+      disableButtons();
+      showStatus(
+        "この拡張機能はすでに同意済みです。このタブは閉じて問題ありません。",
+        "ok"
+      );
+    }
+  });
+
+  btnAccept.addEventListener("click", function () {
+    setConsent(true)
+      .then(function () {
+        disableButtons();
+        showStatus(
+          "同意を受け付けました。このタブは閉じても問題ありません。",
+          "ok"
+        );
+        closeSoon();
+      })
+      .catch(function (err) {
+        showStatus("保存に失敗しました: " + String(err), "bad");
+      });
+  });
+
+  btnDecline.addEventListener("click", function () {
+    setConsent(false)
+      .then(function () {
+        disableButtons();
+        showStatus(
+          "同意されなかったため、この拡張機能は動作しません。変更したい場合は拡張機能のアイコンから再度ご確認ください。",
+          "bad"
+        );
+      })
+      .catch(function (err) {
+        showStatus("保存に失敗しました: " + String(err), "bad");
+      });
+  });
+})();
+</script>
+</body>
+</html>

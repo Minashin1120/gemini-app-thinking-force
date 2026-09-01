@@ -74,6 +74,10 @@
     promptIdleAt: 0,
     /** Whether the last enable ran while the user was in the prompt (restore focus). */
     promptWasActive: false,
+    /** Whether the isolated-world content script has reported consent state. */
+    consentChecked: false,
+    /** Whether the user accepted the ToS / privacy policy. Gates ALL enabling. */
+    consentAccepted: false,
     bootAt: Date.now(),
   };
 
@@ -1252,6 +1256,8 @@
 
   function scheduleEnable(reason) {
     if (state.userDisabledThisSession) return;
+    // Never enable until the user has accepted the ToS / privacy policy.
+    if (!state.consentAccepted) return;
     // Hard stop once success is confirmed by chip
     if (state.domEnableSucceeded && isExtendedActiveInUi()) return;
     if (isExtendedActiveInUi()) {
@@ -1273,6 +1279,11 @@
   async function runEnable(reason) {
     if (enableInFlight) return;
     if (state.userDisabledThisSession) return;
+    // Consent gate: "enableNow" from popup is also blocked until accepted.
+    if (!state.consentAccepted) {
+      logWarn("skip: consent not granted");
+      return;
+    }
 
     // Already good — never open menu / never focus
     if (isExtendedActiveInUi()) {
@@ -1485,7 +1496,16 @@
       if (event.source !== window) return;
       const data = event.data;
       if (!data || data.source !== SOURCE + "-bridge") return;
-      if (data.type === "getLogs") {
+      if (data.type === "consentResult") {
+        state.consentChecked = true;
+        state.consentAccepted = !!(data.payload && data.payload.accepted);
+        if (state.consentAccepted) {
+          logInfo("consent granted; arming auto-enable");
+          scheduleEnable("consent-granted");
+        } else {
+          logInfo("consent not granted; auto-enable stays off");
+        }
+      } else if (data.type === "getLogs") {
         emitToExtension("logs", { logs, state: getPublicState() });
       } else if (data.type === "getState") {
         emitToExtension("state", getPublicState());
@@ -1505,7 +1525,7 @@
   }
 
   function boot() {
-    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.4.1" });
+    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.6.0" });
     patchFetch();
     patchXHR();
     watchDom();
