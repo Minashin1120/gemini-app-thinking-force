@@ -1525,7 +1525,7 @@
   }
 
   function boot() {
-    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.6.1" });
+    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.6.2" });
     patchFetch();
     patchXHR();
     watchDom();
