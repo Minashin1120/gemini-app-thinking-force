@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>プライバシーポリシー | Thinking Mode Auto-On for Gemini App</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --card: #ffffff;
+    --text: #1f2328;
+    --muted: #57606a;
+    --accent: #1a73e8;
+    --border: #d8dee4;
+    --code-bg: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.8;
+  }
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+  }
+  header.hero {
+    background: linear-gradient(135deg, #188038 0%, #0d652d 100%);
+    color: #fff;
+    border-radius: 12px;
+    padding: 40px 32px;
+    margin-bottom: 32px;
+  }
+  header.hero h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+    line-height: 1.4;
+  }
+  header.hero p {
+    margin: 0;
+    opacity: 0.92;
+    font-size: 15px;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .meta span {
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 999px;
+    padding: 3px 12px;
+    font-size: 13px;
+  }
+  section.card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+  section.card h2 {
+    margin: 0 0 14px;
+    font-size: 20px;
+    color: var(--accent);
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--bg);
+  }
+  p, li { font-size: 15px; }
+  ul { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    margin: 12px 0;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--bg); white-space: nowrap; }
+  .notice {
+    background: #e6f4ea;
+    border: 1px solid #a8dab5;
+    border-left: 4px solid #188038;
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 14px;
+  }
+  .notice strong { color: #0d652d; }
+  code, .inline-code {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 6px;
+    font-size: 13px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 40px;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  .toc { list-style: none; padding-left: 0; }
+  .toc li { margin-bottom: 4px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  @media (max-width: 560px) {
+    .container { padding: 16px 12px 60px; }
+    header.hero { padding: 28px 20px; }
+    header.hero h1 { font-size: 22px; }
+    section.card { padding: 18px 16px; }
+    table { font-size: 13px; }
+    th { white-space: normal; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header class="hero">
+    <h1>プライバシーポリシー</h1>
+    <p>Thinking Mode Auto-On for Gemini App（以下「本拡張」）</p>
+    <div class="meta">
+      <span>最終更新日: 2026年9月2日</span>
+      <span>適用開始日: 2026年9月2日</span>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="notice">
+      <strong>方針の要約</strong> — 本拡張は<strong>個人情報を収集・保存・送信しません</strong>。外部サーバーへの通信も、第三者へのデータ提供も行いません。動作はすべてお使いのブラウザ内と、あなた自身がアクセスしている <code class="inline-code">gemini.google.com</code> 上で完結します。
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>目次</h2>
+    <ul class="toc">
+      <li><a href="#collect">1. 収集する情報</a></li>
+      <li><a href="#access">2. アクセスするデータと権限</a></li>
+      <li><a href="#send">3. 送信・共有されるデータ</a></li>
+      <li><a href="#logs">4. ログについて</a></li>
+      <li><a href="#account">5. Google アカウントとの関係</a></li>
+      <li><a href="#cookies">6. Cookie と第三者サービス</a></li>
+      <li><a href="#minors">7. お子様のプライバシー</a></li>
+      <li><a href="#changes">8. 本ポリシーの変更</a></li>
+      <li><a href="#contact">9. お問い合わせ</a></li>
+    </ul>
+  </section>
+
+  <section class="card" id="collect">
+    <h2>1. 収集する情報</h2>
+    <p>本拡張は、利用者の個人情報、アカウント情報、チャット内容、入力内容、閲覧履歴などを<strong>収集しません</strong>。</p>
+    <ul>
+      <li>利用者を特定できる情報（名前・メールアドレス・IP アドレス等）の収集はありません。</li>
+      <li>アクセス解析・統計ツールは一切使用していません。</li>
+      <li>広告の表示・配信も行っていません。</li>
+    </ul>
+  </section>
+
+  <section class="card" id="access">
+    <h2>2. アクセスするデータと権限</h2>
+    <p>本拡張は Chrome のマニフェストで以下の権限のみを宣言しており、これ以外のサイトやデータにはアクセスしません。</p>
+    <table>
+      <tr>
+        <th>権限</th>
+        <th>内容</th>
+      </tr>
+      <tr>
+        <td><code class="inline-code">host_permissions: https://gemini.google.com/*</code></td>
+        <td>動作対象を gemini.google.com のみに限定。モデルチップ等のページ内表示の読み取りと、「強化版思考モード」をオンにするための操作に使用します。</td>
+      </tr>
+      <tr>
+        <td>content scripts（MAIN / isolated world）</td>
+        <td>gemini.google.com のページ読み込み時に、上記の自動有効化処理を実行するために使用します。</td>
+      </tr>
+    </table>
+    <p><code class="inline-code">tabs</code> 等の閲覧履歴・全サイトアクセスに関する権限は<strong>ありません</strong>。</p>
+  </section>
+
+  <section class="card" id="send">
+    <h2>3. 送信・共有されるデータ</h2>
+    <ul>
+      <li>本拡張は、動作対象である <code class="inline-code">gemini.google.com</code> 以外のどの外部サーバーにも通信しません。</li>
+      <li>あなたが入力したプロンプトやチャット内容を外部に送信することはありません。</li>
+      <li>収集した情報がないため、第三者への提供・共有・販売も発生しません。</li>
+    </ul>
+  </section>
+
+  <section class="card" id="logs">
+    <h2>4. ログについて</h2>
+    <ul>
+      <li>本拡張のポップアップには、動作確認用のログ（有効化の成否・経過時間・ページ内で検出した表示状態など）が表示されます。</li>
+      <li>このログは<strong>お使いのブラウザ内のメモリに一時保持されるだけで、サーバーには送信されません</strong>。</li>
+      <li>ブラウザを閉じるか拡張が再起動されるとログは消えます。保存する場合は、利用者がポップアップの「ダウンロード」を明示的に押したときだけ、利用者の操作によってローカルに JSON ファイルとして保存されます。</li>
+      <li>ログには利用者を特定できる情報（メールアドレス、アカウント情報、プロンプト本文など）は含まれません。</li>
+    </ul>
+  </section>
+
+  <section class="card" id="account">
+    <h2>5. Google アカウントとの関係</h2>
+    <ul>
+      <li>本拡張は、強化版思考モードをオンにするために、あなたがログインしている Google アカウントの設定（「強化版思考モード」の有効状態）を変更します。これは、あなた自身が Gemini の画面で手動で「強化版思考モード」をオンにする操作と同じものです。</li>
+      <li>本拡張はあなたの Google アカウントのパスワードや認証情報を取得・保持しません。</li>
+      <li>この設定変更は gemini.google.com の画面操作として行われ、それ以外の場所へ送信されません。</li>
+    </ul>
+  </section>
+
+  <section class="card" id="cookies">
+    <h2>6. Cookie と第三者サービス</h2>
+    <ul>
+      <li>本拡張が独自に Cookie を設定・読み取ることはありません。</li>
+      <li>Google アナリティクス等の第三者による計測サービスは使用していません。</li>
+      <li>配布元の GitHub 等、サービスを提供する各社のポリシーはそれぞれの提供元に適用されます。</li>
+    </ul>
+  </section>
+
+  <section class="card" id="minors">
+    <h2>7. お子様のプライバシー</h2>
+    <p>本拡張は個人情報を収集しないため、お子様の個人情報を収集・利用・保存することはありません。</p>
+  </section>
+
+  <section class="card" id="changes">
+    <h2>8. 本ポリシーの変更</h2>
+    <p>本ポリシーは、機能の変更や法令等に応じて変更することがあります。変更した場合は、本ページの「最終更新日」を更新するとともに、本ページにて公表します。重要な変更がある場合は、変更内容を明示します。</p>
+  </section>
+
+  <section class="card" id="contact">
+    <h2>9. お問い合わせ</h2>
+    <p>本ポリシーに関するご質問は、下記の GitHub リポジトリの Issues からお問い合わせください。</p>
+    <p><a href="https://github.com/Minashin1120/gemini-app-thinking-force" target="_blank" rel="noopener noreferrer">https://github.com/Minashin1120/gemini-app-thinking-force</a></p>
+  </section>
+
+  <footer>
+    <p>&copy; 2026 Thinking Mode Auto-On for Gemini App. All rights reserved.</p>
+    <p><a href="terms.html">利用規約</a></p>
+  </footer>
+
+</div>
+</body>
+</html>
