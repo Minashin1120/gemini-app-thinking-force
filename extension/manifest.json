@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Gemini 強化版思考モード Auto-On",
+  "name": "Thinking Mode Auto-On for Gemini App",
   "description": "gemini.google.com アクセス時にモデルピッカーの「強化版思考モード」を自動でオンにします。",
   "version": "1.4.1",
   "icons": {
@@ -9,7 +9,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Gemini 強化版思考モード Auto-On",
+    "default_title": "Thinking Mode Auto-On for Gemini App",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

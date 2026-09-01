@@ -1,4 +1,4 @@
-# Gemini 強化版思考モード Auto-On
+# Thinking Mode Auto-On for Gemini App
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green.svg)](extension/manifest.json)
