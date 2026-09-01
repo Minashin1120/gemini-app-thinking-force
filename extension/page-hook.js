@@ -121,10 +121,22 @@
   }
 
   function getPublicState() {
+    // Allowlist only — never spread internal `state` so transport/session
+    // values (atToken, bl, fSid) can not leak to the popup / content script.
+    // For those, expose presence booleans only, never the real values.
     return {
-      ...state,
-      url: location.href,
+      consentChecked: state.consentChecked,
+      consentAccepted: state.consentAccepted,
+      domEnableAttempted: state.domEnableAttempted,
+      domEnableSucceeded: state.domEnableSucceeded,
+      prefWriteAttempted: state.prefWriteAttempted,
+      prefWriteSucceeded: state.prefWriteSucceeded,
+      lastDomDetail: state.lastDomDetail,
+      lastError: state.lastError,
+      lastReason: state.lastReason,
       hasAtToken: !!state.atToken,
+      hasBl: !!state.bl,
+      hasFSid: !!state.fSid,
       menuButtonText: textOf(findMenuButton()),
       uiLooksExtended: isExtendedActiveInUi(),
     };
@@ -1530,7 +1542,9 @@
     }, 100);
 
     window.__geminiThinkingAuto = {
-      state,
+      get state() {
+        return getPublicState();
+      },
       enable: () => {
         state.domEnableSucceeded = false;
         state.userDisabledThisSession = false;
