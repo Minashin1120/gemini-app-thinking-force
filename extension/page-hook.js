@@ -1493,7 +1493,7 @@
   }
 
   function boot() {
-    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.7.0" });
+    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.8.0" });
     patchFetch();
     patchXHR();
     watchDom();
