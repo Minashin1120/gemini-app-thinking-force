@@ -20,7 +20,6 @@
   const PREF_INDEX = PREF_FIELD_ID - 1;
   const THINKING_LEVEL_EXTENDED = 2;
   const THINKING_LEVEL_EXTENDED_STR = "THINKING_LEVEL_EXTENDED";
-  const MAX_LOGS = 2000;
 
   /** Startup / retry timing (v1.4: prioritize first-paint enable speed). */
   const EARLY_WINDOW_MS = 6000;
@@ -81,35 +80,6 @@
     bootAt: Date.now(),
   };
 
-  /** @type {{ts:number, level:string, msg:string, data?:any}[]} */
-  const logs = [];
-
-  function serialize(value) {
-    try {
-      return JSON.parse(
-        JSON.stringify(value, (_, v) => {
-          if (v instanceof Error) {
-            return { name: v.name, message: v.message, stack: v.stack };
-          }
-          if (v instanceof Element) {
-            return {
-              tag: v.tagName,
-              id: v.id,
-              class: String(v.className || "").slice(0, 120),
-              testId: v.getAttribute("data-test-id"),
-              role: v.getAttribute("role"),
-              text: (v.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80),
-            };
-          }
-          if (typeof v === "bigint") return String(v);
-          return v;
-        })
-      );
-    } catch (_) {
-      return String(value);
-    }
-  }
-
   function emitToExtension(type, payload) {
     try {
       window.postMessage({ source: SOURCE, type, payload }, "*");
@@ -119,14 +89,8 @@
   }
 
   function log(level, msg, data) {
-    const entry = {
-      ts: Date.now(),
-      level,
-      msg,
-      data: data === undefined ? undefined : serialize(data),
-    };
-    logs.push(entry);
-    if (logs.length > MAX_LOGS) logs.splice(0, logs.length - MAX_LOGS);
+    // Console-only. No in-memory log retention or transmission to the
+    // extension: keeps page content out of extension storage / popup.
     try {
       const args =
         data === undefined ? [LOG_PREFIX, msg] : [LOG_PREFIX, msg, data];
@@ -136,7 +100,6 @@
     } catch (_) {
       /* ignore */
     }
-    emitToExtension("log", entry);
   }
 
   function logInfo(msg, data) {
@@ -160,7 +123,6 @@
   function getPublicState() {
     return {
       ...state,
-      logCount: logs.length,
       url: location.href,
       hasAtToken: !!state.atToken,
       menuButtonText: textOf(findMenuButton()),
@@ -1505,8 +1467,6 @@
         } else {
           logInfo("consent not granted; auto-enable stays off");
         }
-      } else if (data.type === "getLogs") {
-        emitToExtension("logs", { logs, state: getPublicState() });
       } else if (data.type === "getState") {
         emitToExtension("state", getPublicState());
       } else if (data.type === "enableNow") {
@@ -1516,16 +1476,12 @@
         state.menuOpenedByUs = false;
         attemptCount = 0;
         runEnable("popup");
-      } else if (data.type === "clearLogs") {
-        logs.length = 0;
-        logInfo("logs cleared");
-        emitToExtension("logs", { logs, state: getPublicState() });
       }
     });
   }
 
   function boot() {
-    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.6.2" });
+    logInfo("boot", { href: location.href, ua: navigator.userAgent, v: "1.7.0" });
     patchFetch();
     patchXHR();
     watchDom();
@@ -1575,7 +1531,6 @@
 
     window.__geminiThinkingAuto = {
       state,
-      logs,
       enable: () => {
         state.domEnableSucceeded = false;
         state.userDisabledThisSession = false;
@@ -1586,7 +1541,7 @@
       },
       writePref: () => writeThinkingPreference(THINKING_LEVEL_EXTENDED),
       getState: getPublicState,
-      dump: () => ({ state: getPublicState(), logs: logs.slice() }),
+      dump: () => getPublicState(),
       isExtended: isExtendedActiveInUi,
       tryNg: tryInvokeAngularThinkingExtended,
     };

@@ -9,7 +9,7 @@
   <body>
     <header>
       <h1>Thinking Mode Auto-On for Gemini App</h1>
-      <p class="sub">ログと状態の確認 / ダウンロード</p>
+      <p class="sub">状態の確認</p>
     </header>
 
     <section class="consent card" id="consentView" hidden>
@@ -45,10 +45,6 @@
           <span id="prefOk" class="value">—</span>
         </div>
         <div class="row">
-          <span class="label">ログ件数</span>
-          <span id="logCount" class="value">0</span>
-        </div>
-        <div class="row">
           <span class="label">最終詳細</span>
           <span id="detail" class="value mono">—</span>
         </div>
@@ -57,16 +53,6 @@
       <section class="actions">
         <button id="btnRefresh" type="button">更新</button>
         <button id="btnEnable" type="button" class="primary">今すぐ有効化</button>
-        <button id="btnDownload" type="button" class="accent">ログをダウンロード</button>
-        <button id="btnClear" type="button" class="ghost">ログクリア</button>
-      </section>
-
-      <section class="card">
-        <div class="log-head">
-          <strong>直近ログ</strong>
-          <span id="logMeta" class="muted"></span>
-        </div>
-        <pre id="logView" class="log-view">読み込み中…</pre>
       </section>
     </div>
 

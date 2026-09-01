@@ -10,21 +10,21 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Create release v1.5.0
+      - name: Create release v1.7.0
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.5.0
-          name: v1.5.0
+          tag_name: v1.7.0
+          name: v1.7.0
           generate_release_notes: false
           body: |
-            ## Thinking Mode Auto-On for Gemini App v1.5.0
+            ## Thinking Mode Auto-On for Gemini App v1.7.0
 
             Chrome extension that auto-enables Gemini Extended Thinking mode on gemini.google.com.
 
-            ### Changes in v1.5.0
-            - Extension renamed to "Thinking Mode Auto-On for Gemini App"
-            - Don't interrupt prompt input (IME) while enabling; focus returns to the prompt bar after enabling
-            - Removed unused `tabs` permission
+            ### Changes in v1.7.0
+            - Removed log viewing/downloading from the popup (privacy hardening)
+            - Extension no longer collects or stores operation logs; popup shows status only
+            - Updated privacy policy
 
             ### Features
             - Auto-enable Extended Thinking on page load
@@ -32,7 +32,8 @@ jobs:
             - UI sync with chip success check
             - Skip menu interaction when already enabled
             - Respect manual off within the same tab session
-            - Popup: status + JSON log download
+            - One-time ToS / privacy policy consent gate
+            - Popup: status view (no logs)
 
             ### Install
             1. Clone this repository
